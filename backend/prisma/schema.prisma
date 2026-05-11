@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum OrgTier {
+  FREE
+  PREMIUM
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  tier      OrgTier  @default(FREE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  forms     Form[]
+  webhooks  Webhook[]
+  responses Response[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  orgId        String
+  email        String
+  name         String?
+  role         OrgRole  @default(MEMBER)
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  forms        Form[]       @relation("UserForms")
+
+  @@unique([orgId, email])
+  @@index([orgId])
+}
+
+model Form {
+  id          String   @id @default(cuid())
+  orgId       String
+  createdById String
+  name        String
+  schema      Json
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("UserForms", fields: [createdById], references: [id])
+  webhooks     Webhook[]
+  responses    Response[]
+
+  @@index([orgId])
+  @@index([createdById])
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  orgId     String
+  formId    String
+  url       String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  form         Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, url])
+  @@index([orgId])
+  @@index([formId])
+}
+
+model Response {
+  id          String   @id @default(cuid())
+  orgId       String
+  formId      String
+  payload     Json
+  submittedAt DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  form         Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([formId])
+  @@index([orgId, submittedAt])
+}
