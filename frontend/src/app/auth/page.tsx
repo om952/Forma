@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiFetch } from "../../lib/api";
-import { setAuthToken } from "../../lib/auth";
+import { setAuthToken, setAuthUser } from "../../lib/auth";
 
 type AuthMode = "signup" | "login";
 
@@ -51,13 +51,19 @@ export default function AuthPage() {
         throw new Error(body.message || "Authentication failed");
       }
 
-      const data = (await response.json()) as { token?: string };
+      const data = (await response.json()) as {
+        token?: string;
+        user?: { id: string; email: string; role: string; orgId: string };
+      };
 
       if (!data.token) {
         throw new Error("Token not returned by server");
       }
 
       setAuthToken(data.token);
+      if (data.user) {
+        setAuthUser(data.user as any);
+      }
       setStatus("Authenticated. Redirecting to builder...");
       router.push("/builder");
     } catch (error) {
@@ -69,85 +75,83 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#e9f7ff_0%,#f8f1ff_45%,#fff7ed_100%)] px-6 py-12 text-slate-900">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
-        <header className="rounded-3xl border border-white/70 bg-white/80 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.12)] backdrop-blur">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Forma Access
-          </p>
-          <h1 className="text-3xl font-semibold">{mode === "signup" ? "Create your workspace" : "Sign in"}</h1>
-          <p className="text-sm text-slate-600">
+    <div className="page-bg px-6 py-12">
+      <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
+        <header className="card-elevated text-center">
+          <p className="eyebrow">Forma Access</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+            {mode === "signup" ? "Create your workspace" : "Sign in"}
+          </h1>
+          <p className="mt-2 text-sm text-slate-600">
             Use your org name for signup and optional org name for login if you manage multiple orgs.
           </p>
         </header>
 
         <form
-          className="rounded-3xl border border-white/70 bg-white/80 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.12)] backdrop-blur"
+          className="card-elevated space-y-5"
           onSubmit={handleSubmit}
         >
-          <div className="grid gap-4">
-            <div className="flex items-center gap-3 rounded-2xl bg-slate-900/5 p-2">
-              <button
-                type="button"
-                className={`flex-1 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                  mode === "signup"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-                onClick={() => setMode("signup")}
-              >
-                Sign up
-              </button>
-              <button
-                type="button"
-                className={`flex-1 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                  mode === "login"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-                onClick={() => setMode("login")}
-              >
-                Log in
-              </button>
-            </div>
-
-            <label className="text-sm font-medium text-slate-700">
-              Email
-              <input
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Password
-              <input
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Organization name
-              <input
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                type="text"
-                value={organizationName}
-                onChange={(event) => setOrganizationName(event.target.value)}
-                placeholder={mode === "signup" ? "Acme Inc" : "Optional"}
-                required={mode === "signup"}
-              />
-            </label>
+          <div className="flex items-center gap-2 rounded-xl bg-slate-100 p-1.5">
+            <button
+              type="button"
+              className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                mode === "signup"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+              onClick={() => setMode("signup")}
+            >
+              Sign up
+            </button>
+            <button
+              type="button"
+              className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                mode === "login"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+              onClick={() => setMode("login")}
+            >
+              Log in
+            </button>
           </div>
 
+          <label className="label block">
+            Email
+            <input
+              className="input mt-2"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+
+          <label className="label block">
+            Password
+            <input
+              className="input mt-2"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </label>
+
+          <label className="label block">
+            Organization name
+            <input
+              className="input mt-2"
+              type="text"
+              value={organizationName}
+              onChange={(event) => setOrganizationName(event.target.value)}
+              placeholder={mode === "signup" ? "Acme Inc" : "Optional"}
+              required={mode === "signup"}
+            />
+          </label>
+
           <button
-            className="mt-6 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition hover:-translate-y-0.5 hover:bg-slate-800"
+            className="btn-primary w-full"
             type="submit"
             disabled={isSubmitting}
           >
@@ -159,9 +163,7 @@ export default function AuthPage() {
           </button>
 
           {status ? (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-              {status}
-            </div>
+            <div className="status-info">{status}</div>
           ) : null}
         </form>
       </div>

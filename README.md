@@ -7,8 +7,9 @@ Forma is a multi-tenant B2B SaaS form builder with authentication, org-scoped da
 - **Authentication + org isolation**: Users sign up/login and operate inside an organization. Every request is scoped to `orgId` for strict data isolation.
 - **Form builder**: Authenticated users build forms with a drag-and-drop style builder (text/select/file fields) and save schemas to the backend.
 - **Public submissions**: Forms can be submitted publicly without JWT. Submissions are stored as responses tied to the form and org.
-- **Webhook engine**: Each submission can trigger one or more webhooks through BullMQ + Redis, with retries and backoff.
-- **Analytics**: View response totals and daily submission counts for the last 7 days.
+- **Webhook engine**: Each submission can trigger one or more webhooks through BullMQ + Redis, with retries and backoff. Deliveries that exhaust every retry land in a dead-letter table and can be inspected and replayed from the UI.
+- **Email notifications**: Form owners are emailed on each submission, and respondents who supply an email address get a confirmation. Delivered through a separate BullMQ queue.
+- **Analytics**: View response totals and daily submission counts for the last 7 days, plus per-field drop-off rates and a submission heatmap. Premium-only.
 - **Monetization**: Free tier allows up to 3 forms. Premium unlocks unlimited forms and analytics. Razorpay handles payments and upgrades.
 
 ## Tech stack
@@ -84,7 +85,20 @@ RAZORPAY_KEY_ID="your_key_id"
 RAZORPAY_KEY_SECRET="your_key_secret"
 RAZORPAY_WEBHOOK_SECRET="your_webhook_secret"
 REDIS_URL="redis://127.0.0.1:6379"
+
+# Email notifications (optional — see below)
+RESEND_API_KEY="your_resend_api_key"
+EMAIL_FROM="Forma <onboarding@resend.dev>"
+FRONTEND_URL="http://localhost:3000"
 ```
+
+See `backend/.env.example` for a documented template.
+
+**Email notifications are optional.** With `RESEND_API_KEY` unset, the
+notification worker drains its queue and logs a warning instead of sending —
+submissions, webhooks, and everything else work normally. Set the key to turn
+emails on; no code change needed. `EMAIL_FROM` defaults to Resend's sandbox
+sender, which works without verifying a domain.
 
 Run migrations:
 

@@ -1,11 +1,9 @@
 import { Queue } from "bullmq";
-import IORedis from "ioredis";
 
-const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+import { redisConnection } from "./redis";
 
-export const redisConnection = new IORedis(redisUrl, {
-  maxRetriesPerRequest: null,
-});
+// Re-exported for existing importers (e.g. the webhook worker).
+export { redisConnection };
 
 export const webhookQueue = new Queue("webhook-deliveries", {
   connection: redisConnection,
@@ -21,6 +19,10 @@ export const webhookQueue = new Queue("webhook-deliveries", {
 });
 
 export type WebhookJobData = {
+  orgId: string;
+  formId: string;
+  /** Null once the originating webhook has been deleted. */
+  webhookId: string | null;
   url: string;
   payload: Record<string, unknown>;
 };

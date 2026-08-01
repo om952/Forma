@@ -12,17 +12,62 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@layer utilities {
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.08)];
+  }
+
+  .card-elevated {
+    @apply rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_8px_28px_-6px_rgba(15,23,42,0.12)];
+  }
+
+  .btn-primary {
+    @apply rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800;
+  }
+
+  .btn-secondary {
+    @apply rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300 hover:text-slate-900;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100;
+  }
+
+  .label {
+    @apply text-sm font-medium text-slate-700;
+  }
+
+  .page-bg {
+    @apply min-h-screen bg-slate-50;
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.3em] text-slate-400;
+  }
+
+  .status-success {
+    @apply rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700;
+  }
+
+  .status-error {
+    @apply rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700;
+  }
+
+  .status-info {
+    @apply rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700;
+  }
+}
+
+@layer base {
+  ::selection {
+    background-color: rgba(15, 23, 42, 0.1);
+  }
 }
 
 @keyframes floatIn {
@@ -34,4 +79,8 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.animate-floatIn {
+  animation: floatIn 0.5s ease forwards;
 }

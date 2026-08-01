@@ -18,10 +18,14 @@ enum OrgTier {
 }
 
 model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  tier      OrgTier  @default(FREE)
+  id                String    @id @default(cuid())
+  name              String
+  slug              String    @unique
+  tier              OrgTier   @default(FREE)
+  razorpayCustomerId String?  @unique
+  razorpaySubscriptionId String? @unique
+  subscriptionStatus String?  // active, cancelled, past_due, etc.
+  currentPeriodEnd   DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -29,6 +33,7 @@ model Organization {
   forms     Form[]
   webhooks  Webhook[]
   responses Response[]
+  webhookDeadLetters WebhookDeadLetter[]
 }
 
 model User {
@@ -49,19 +54,21 @@ model User {
 }
 
 model Form {
-  id          String   @id @default(cuid())
-  orgId       String
-  createdById String
-  name        String
-  schema      Json
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  orgId           String
+  createdById     String
+  name            String
+  schema          Json
+  thankYouMessage String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   createdBy    User         @relation("UserForms", fields: [createdById], references: [id])
   webhooks     Webhook[]
   responses    Response[]
+  webhookDeadLetters WebhookDeadLetter[]
 
   @@index([orgId])
   @@index([createdById])
@@ -78,6 +85,7 @@ model Webhook {
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   form         Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  deadLetters  WebhookDeadLetter[]
 
   @@unique([formId, url])
   @@index([orgId])
@@ -97,4 +105,24 @@ model Response {
   @@index([orgId])
   @@index([formId])
   @@index([orgId, submittedAt])
+}
+
+model WebhookDeadLetter {
+  id           String   @id @default(cuid())
+  orgId        String
+  formId       String
+  webhookId    String?
+  url          String
+  payload      Json
+  lastError    String
+  attemptsMade Int
+  failedAt     DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  form         Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  webhook      Webhook?     @relation(fields: [webhookId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([formId])
+  @@index([webhookId])
 }

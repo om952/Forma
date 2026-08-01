@@ -15,7 +15,7 @@ const toSlug = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "");
 
-const signToken = (payload: { userId: string; orgId: string }) => {
+const signToken = (payload: { userId: string; orgId: string; role: string }) => {
   if (!JWT_SECRET) {
     throw new Error("JWT_SECRET is not set");
   }
@@ -90,7 +90,7 @@ export const signup = async (req: Request, res: Response) => {
       return { organization: organizationRecord, user: userRecord };
     });
 
-    const token = signToken({ userId: user.id, orgId: organization.id });
+    const token = signToken({ userId: user.id, orgId: organization.id, role: user.role });
 
     return res.status(201).json({
       token,
@@ -161,7 +161,11 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const token = signToken({ userId: user.id, orgId: user.orgId });
+    const token = signToken({
+      userId: user.id,
+      orgId: user.orgId,
+      role: user.role,
+    });
 
     return res.json({
       token,
