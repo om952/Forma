@@ -134,11 +134,19 @@ export default function PublicFormPage() {
   if (submitted) {
     return (
       <div className="page-bg flex items-center justify-center px-6">
-        <div className="card-elevated w-full max-w-md text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Thank you!</h2>
-          <p className="mt-2 whitespace-pre-line text-slate-600">
-            {form?.thankYouMessage || "Your submission has been received."}
-          </p>
+        <div className="card-elevated w-full max-w-md overflow-hidden p-0 text-center">
+          <div className="h-2.5 bg-gradient-to-r from-indigo-500 to-indigo-700" />
+          <div className="p-8">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-2xl">
+              ✓
+            </span>
+            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">
+              Thank you!
+            </h2>
+            <p className="mt-2 whitespace-pre-line text-slate-600">
+              {form?.thankYouMessage || "Your submission has been received."}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -159,7 +167,9 @@ export default function PublicFormPage() {
   return (
     <div className="page-bg px-6 py-12">
       <div className="mx-auto w-full max-w-xl">
-        <div className="card-elevated">
+        <div className="card-elevated overflow-hidden p-0">
+          <div className="h-2.5 bg-gradient-to-r from-indigo-500 to-indigo-700" />
+          <div className="p-6">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{form.name}</h1>
           <p className="mt-1 text-sm text-slate-500">Powered by Forma</p>
 
@@ -286,6 +296,7 @@ export default function PublicFormPage() {
               Submit
             </button>
           </form>
+          </div>
         </div>
       </div>
     </div>

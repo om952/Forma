@@ -3,8 +3,21 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import AppHeader from "../../components/AppHeader";
+import FormSubNav from "../../components/FormSubNav";
 import { apiFetch, getApiBaseUrl } from "../../lib/api";
 import { getAuthToken } from "../../lib/auth";
+
+const FIELD_ICONS: Record<string, string> = {
+  text: "✏️",
+  textarea: "📝",
+  email: "✉️",
+  number: "#️⃣",
+  date: "📅",
+  checkbox: "☑️",
+  select: "▾",
+  file: "📎",
+};
 import {
   useFormBuilderStore,
   type FormField,
@@ -245,9 +258,13 @@ export default function FormBuilderPage() {
 
   return (
     <div className="page-bg">
+      <AppHeader />
+      {formId ? (
+        <FormSubNav formId={formId} active="builder" formName={title || undefined} />
+      ) : null}
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 lg:flex-row">
         <aside className="w-full lg:w-72">
-          <div className="card-elevated sticky top-6">
+          <div className="card-elevated sticky top-24">
             <div className="space-y-2">
               <p className="eyebrow">{formId ? "Editing" : "Toolbox"}</p>
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Forma Builder</h1>
@@ -268,28 +285,28 @@ export default function FormBuilderPage() {
 
             <div className="mt-6 grid grid-cols-2 gap-2.5">
               <button className="btn-secondary text-left" onClick={() => addField("text")}>
-                + Text
+                {FIELD_ICONS.text} Text
               </button>
               <button className="btn-secondary text-left" onClick={() => addField("textarea")}>
-                + Long answer
+                {FIELD_ICONS.textarea} Long answer
               </button>
               <button className="btn-secondary text-left" onClick={() => addField("email")}>
-                + Email
+                {FIELD_ICONS.email} Email
               </button>
               <button className="btn-secondary text-left" onClick={() => addField("number")}>
-                + Number
+                {FIELD_ICONS.number} Number
               </button>
               <button className="btn-secondary text-left" onClick={() => addField("date")}>
-                + Date
+                {FIELD_ICONS.date} Date
               </button>
               <button className="btn-secondary text-left" onClick={() => addField("checkbox")}>
-                + Checkbox
+                {FIELD_ICONS.checkbox} Checkbox
               </button>
               <button className="btn-secondary text-left" onClick={() => addField("select")}>
-                + Select
+                {FIELD_ICONS.select} Select
               </button>
               <button className="btn-secondary text-left" onClick={() => addField("file")}>
-                + File
+                {FIELD_ICONS.file} File
               </button>
             </div>
 

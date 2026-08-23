@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 
+import AppHeader from "../../../components/AppHeader";
+import FormSubNav from "../../../components/FormSubNav";
 import { apiFetch } from "../../../lib/api";
 import { getAuthToken } from "../../../lib/auth";
 
@@ -106,16 +108,13 @@ export default function SharePage() {
   }
 
   return (
-    <div className="page-bg px-6 py-10">
+    <div className="page-bg">
+      <AppHeader />
+      <FormSubNav formId={formId} active="share" formName={form?.name} />
+      <div className="px-6 py-10">
       <div className="mx-auto w-full max-w-3xl">
         <div className="mb-6">
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-slate-500 hover:text-slate-700"
-          >
-            ← Back to Dashboard
-          </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
             Share {form?.name ?? "form"}
           </h1>
           <p className="text-sm text-slate-500">
@@ -200,6 +199,7 @@ export default function SharePage() {
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

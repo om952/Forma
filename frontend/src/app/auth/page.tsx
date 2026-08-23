@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -75,22 +76,75 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="page-bg px-6 py-12">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
-        <header className="card-elevated text-center">
-          <p className="eyebrow">Forma Access</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
-            {mode === "signup" ? "Create your workspace" : "Sign in"}
-          </h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Use your org name for signup and optional org name for login if you manage multiple orgs.
-          </p>
-        </header>
+    <div className="flex min-h-screen">
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-indigo-600 to-indigo-900 p-12 text-white lg:flex">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-white/10 blur-3xl"
+        />
 
-        <form
-          className="card-elevated space-y-5"
-          onSubmit={handleSubmit}
-        >
+        <Link href="/" className="flex items-center gap-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15 text-sm font-bold">
+            F
+          </span>
+          <span className="text-lg font-semibold">Forma</span>
+        </Link>
+
+        <div className="relative">
+          <h2 className="text-3xl font-semibold leading-snug tracking-tight">
+            Build forms your whole team can rely on.
+          </h2>
+          <ul className="mt-8 space-y-4 text-sm text-indigo-100">
+            <li className="flex items-start gap-3">
+              <span className="mt-0.5">⚡</span>
+              Conditional logic and 8 field types, no code required.
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-0.5">🔌</span>
+              Route submissions to Slack, Zapier, or any webhook — with automatic
+              retries.
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-0.5">📊</span>
+              Drop-off rates and heatmaps on every field.
+            </li>
+          </ul>
+        </div>
+
+        <p className="relative text-xs text-indigo-200">
+          Org-scoped data isolation, built in from day one.
+        </p>
+      </div>
+
+      <div className="flex w-full flex-col justify-center bg-slate-50 px-6 py-12 lg:w-1/2">
+        <div className="mx-auto flex w-full max-w-md flex-col gap-5">
+          <Link href="/" className="mb-2 flex items-center gap-2 lg:hidden">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
+              F
+            </span>
+            <span className="text-lg font-semibold text-slate-900">Forma</span>
+          </Link>
+
+          <header>
+            <p className="eyebrow">Welcome</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+              {mode === "signup" ? "Create your workspace" : "Sign in"}
+            </h1>
+            <p className="mt-2 text-sm text-slate-600">
+              {mode === "signup"
+                ? "Set an organization name — that's your team's workspace."
+                : "Add your organization name if you belong to more than one."}
+            </p>
+          </header>
+
+          <form
+            className="card-elevated space-y-5"
+            onSubmit={handleSubmit}
+          >
           <div className="flex items-center gap-2 rounded-xl bg-slate-100 p-1.5">
             <button
               type="button"
@@ -166,6 +220,7 @@ export default function AuthPage() {
             <div className="status-info">{status}</div>
           ) : null}
         </form>
+        </div>
       </div>
     </div>
   );

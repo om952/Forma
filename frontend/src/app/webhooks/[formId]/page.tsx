@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import AppHeader from "../../../components/AppHeader";
+import FormSubNav from "../../../components/FormSubNav";
 import { apiFetch, getApiBaseUrl } from "../../../lib/api";
 import { getAuthToken } from "../../../lib/auth";
 
@@ -207,21 +208,24 @@ export default function WebhooksPage() {
 
   if (loading) {
     return (
-      <div className="page-bg flex items-center justify-center">
-        <p className="text-slate-500">Loading webhooks...</p>
+      <div className="page-bg">
+        <AppHeader />
+        <div className="flex items-center justify-center py-24">
+          <p className="text-slate-500">Loading webhooks...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="page-bg px-6 py-10">
+    <div className="page-bg">
+      <AppHeader />
+      <FormSubNav formId={formId} active="webhooks" />
+      <div className="px-6 py-10">
       <div className="mx-auto w-full max-w-3xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <Link href="/dashboard" className="text-sm font-medium text-slate-500 hover:text-slate-700">
-              ← Back to Dashboard
-            </Link>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Webhooks</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Webhooks</h1>
             <p className="text-sm text-slate-500">Route submissions to Slack, Zapier, or custom URLs.</p>
           </div>
           <div className="text-xs text-slate-400">API: {apiBase}</div>
@@ -361,6 +365,7 @@ export default function WebhooksPage() {
             </div>
           </div>
         ) : null}
+      </div>
       </div>
     </div>
   );

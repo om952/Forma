@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import AppHeader from "../../../components/AppHeader";
+import FormSubNav from "../../../components/FormSubNav";
 import { apiFetch, getApiBaseUrl } from "../../../lib/api";
 import { getAuthToken } from "../../../lib/auth";
 
@@ -107,6 +109,8 @@ export default function ResponsesPage() {
 
   return (
     <div className="page-bg">
+      <AppHeader />
+      <FormSubNav formId={formId} active="responses" formName={form?.name} />
       <div className="mx-auto max-w-6xl px-6 py-10">
         <header className="mb-8 flex items-center justify-between">
           <div>
@@ -115,21 +119,13 @@ export default function ResponsesPage() {
               {form?.name ?? "Submissions"}
             </h1>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleExport}
-              disabled={isExporting || responses.length === 0}
-              className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isExporting ? "Exporting..." : "Export CSV"}
-            </button>
-            <Link href={`/analytics/${formId}`} className="btn-secondary">
-              Analytics
-            </Link>
-            <Link href="/dashboard" className="btn-primary">
-              Dashboard
-            </Link>
-          </div>
+          <button
+            onClick={handleExport}
+            disabled={isExporting || responses.length === 0}
+            className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isExporting ? "Exporting..." : "Export CSV"}
+          </button>
         </header>
 
         {status ? <div className="status-error mb-6">{status}</div> : null}

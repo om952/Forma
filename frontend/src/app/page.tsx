@@ -57,8 +57,34 @@ export default function Home() {
 
   return (
     <div className="page-bg">
+      {/* Nav */}
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <Link href="/" className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
+              F
+            </span>
+            <span className="text-lg font-semibold tracking-tight text-slate-900">
+              Forma
+            </span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/auth" className="nav-link">
+              Sign in
+            </Link>
+            <Link href="/auth" className="btn-primary py-2 text-sm">
+              Get started
+            </Link>
+          </div>
+        </div>
+      </header>
+
       {/* Hero */}
       <section className="relative overflow-hidden px-6 pb-16 pt-16">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[420px] w-[820px] -translate-x-1/2 rounded-full bg-indigo-100/60 blur-3xl"
+        />
         <div className="mx-auto max-w-5xl text-center">
           <span className="eyebrow">Forma — Multi-Tenant Form Builder</span>
           <h1 className="mt-5 text-5xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
@@ -104,6 +130,27 @@ export default function Home() {
         </div>
       </section>
 
+      {/* How it works */}
+      <section className="px-6 pb-16">
+        <div className="mx-auto max-w-5xl">
+          <div className="grid gap-8 sm:grid-cols-3">
+            {[
+              { step: "1", title: "Build", desc: "Drag in fields, add conditional logic, set a thank-you message." },
+              { step: "2", title: "Share", desc: "Send the link, embed it, or drop a QR code on a slide." },
+              { step: "3", title: "Analyze", desc: "Watch responses roll in with drop-off rates and webhooks." },
+            ].map((item) => (
+              <div key={item.step} className="text-center sm:text-left">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold text-white sm:mx-0 mx-auto">
+                  {item.step}
+                </span>
+                <h3 className="mt-4 text-base font-semibold text-slate-900">{item.title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="px-6 pb-16">
         <div className="mx-auto max-w-6xl">
@@ -121,7 +168,9 @@ export default function Home() {
                 href={feature.href}
                 className="card-elevated transition hover:-translate-y-1"
               >
-                <div className="mb-4 text-3xl">{feature.icon}</div>
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-2xl">
+                  {feature.icon}
+                </div>
                 <h3 className="text-lg font-semibold text-slate-900">{feature.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600">
                   {feature.description}
@@ -146,6 +195,24 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-200 px-6 py-10">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-xs font-bold text-white">
+              F
+            </span>
+            <span className="text-sm font-semibold text-slate-700">Forma</span>
+          </div>
+          <div className="flex items-center gap-6 text-sm text-slate-500">
+            <Link href="/builder" className="hover:text-slate-900">Builder</Link>
+            <Link href="/billing" className="hover:text-slate-900">Pricing</Link>
+            <Link href="/auth" className="hover:text-slate-900">Sign in</Link>
+          </div>
+          <p className="text-xs text-slate-400">© {new Date().getFullYear()} Forma</p>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import AppHeader from "../../components/AppHeader";
 import { apiFetch, getApiBaseUrl } from "../../lib/api";
 import { canDeleteForm, getAuthToken, getAuthUser } from "../../lib/auth";
 
@@ -22,6 +23,15 @@ export default function DashboardPage() {
   const [token, setToken] = useState<string | null>(null);
   const [canDelete, setCanDelete] = useState(false);
   const apiBase = getApiBaseUrl();
+
+  const stats = useMemo(
+    () => ({
+      totalForms: forms.length,
+      totalResponses: forms.reduce((sum, f) => sum + f._count.responses, 0),
+      activeForms: forms.filter((f) => f.isActive).length,
+    }),
+    [forms]
+  );
 
   useEffect(() => {
     setToken(getAuthToken());
@@ -110,20 +120,16 @@ export default function DashboardPage() {
 
   return (
     <div className="page-bg">
+      <AppHeader />
       <div className="mx-auto max-w-6xl px-6 py-10">
         <header className="mb-8 flex items-center justify-between">
           <div>
             <p className="eyebrow">Dashboard</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">Your Forms</h1>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/builder" className="btn-primary">
-              + New Form
-            </Link>
-            <Link href="/billing" className="btn-secondary">
-              Billing
-            </Link>
-          </div>
+          <Link href="/builder" className="btn-primary">
+            + New Form
+          </Link>
         </header>
 
         {status ? (
@@ -142,13 +148,44 @@ export default function DashboardPage() {
             <p className="text-slate-500">Loading forms...</p>
           </div>
         ) : forms.length === 0 ? (
-          <div className="card-elevated p-10 text-center">
-            <p className="text-slate-600">No forms yet. Create your first form!</p>
-            <Link href="/builder" className="btn-primary mt-4 inline-block">
-              Create Form
+          <div className="card-elevated flex flex-col items-center p-14 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-3xl">
+              📋
+            </span>
+            <h2 className="mt-5 text-lg font-semibold text-slate-900">No forms yet</h2>
+            <p className="mt-2 max-w-sm text-sm text-slate-600">
+              Create your first form to start collecting responses — it takes less
+              than a minute.
+            </p>
+            <Link href="/builder" className="btn-primary mt-6 inline-block">
+              Create your first form
             </Link>
           </div>
         ) : (
+          <>
+          <div className="mb-6 grid gap-4 sm:grid-cols-3">
+            <div className="stat-tile">
+              <span className="stat-tile-icon">📋</span>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.totalForms}</p>
+                <p className="text-xs text-slate-500">Total forms</p>
+              </div>
+            </div>
+            <div className="stat-tile">
+              <span className="stat-tile-icon">📥</span>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.totalResponses}</p>
+                <p className="text-xs text-slate-500">Total responses</p>
+              </div>
+            </div>
+            <div className="stat-tile">
+              <span className="stat-tile-icon">🟢</span>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.activeForms}</p>
+                <p className="text-xs text-slate-500">Active forms</p>
+              </div>
+            </div>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {forms.map((form) => (
               <div
@@ -227,6 +264,7 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+          </>
         )}
       </div>
     </div>

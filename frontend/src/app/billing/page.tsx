@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import AppHeader from "../../components/AppHeader";
 import { apiFetch, getApiBaseUrl } from "../../lib/api";
 import { getAuthToken } from "../../lib/auth";
 
@@ -114,7 +114,7 @@ export default function BillingPage() {
             currentPeriodEnd: null,
           });
         },
-        theme: { color: "#1f2937" },
+        theme: { color: "#4f46e5" },
       });
 
       checkout.open();
@@ -141,22 +141,22 @@ export default function BillingPage() {
 
   if (loading) {
     return (
-      <div className="page-bg flex items-center justify-center">
-        <p className="text-slate-500">Loading billing...</p>
+      <div className="page-bg">
+        <AppHeader />
+        <div className="flex items-center justify-center py-24">
+          <p className="text-slate-500">Loading billing...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="page-bg">
+      <AppHeader />
       <div className="mx-auto w-full max-w-4xl px-6 py-10">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <Link href="/dashboard" className="text-sm font-medium text-slate-500 hover:text-slate-700">
-              ← Back to Dashboard
-            </Link>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Billing</h1>
-          </div>
+        <div className="mb-6">
+          <p className="eyebrow">Billing</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">Plans</h1>
         </div>
 
         {error ? <div className="status-error mb-6">{error}</div> : null}
@@ -205,7 +205,7 @@ export default function BillingPage() {
                   onClick={() => setSelectedPlan("monthly")}
                   className={`rounded-2xl border p-6 text-left transition ${
                     selectedPlan === "monthly"
-                      ? "border-slate-900 bg-slate-50"
+                      ? "border-indigo-500 bg-indigo-50"
                       : "border-slate-200 bg-white hover:border-slate-300"
                   }`}
                 >
@@ -218,7 +218,7 @@ export default function BillingPage() {
                   onClick={() => setSelectedPlan("yearly")}
                   className={`rounded-2xl border p-6 text-left transition ${
                     selectedPlan === "yearly"
-                      ? "border-slate-900 bg-slate-50"
+                      ? "border-indigo-500 bg-indigo-50"
                       : "border-slate-200 bg-white hover:border-slate-300"
                   }`}
                 >

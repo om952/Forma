@@ -28,7 +28,7 @@ body {
   }
 
   .btn-primary {
-    @apply rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800;
+    @apply rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-500;
   }
 
   .btn-secondary {
@@ -36,7 +36,7 @@ body {
   }
 
   .input {
-    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100;
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100;
   }
 
   .label {
@@ -48,7 +48,7 @@ body {
   }
 
   .eyebrow {
-    @apply text-xs font-semibold uppercase tracking-[0.3em] text-slate-400;
+    @apply text-xs font-semibold uppercase tracking-[0.3em] text-indigo-500;
   }
 
   .status-success {
@@ -61,6 +61,32 @@ body {
 
   .status-info {
     @apply rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700;
+  }
+
+  /* Top nav / sub-nav tabs — shared by AppHeader and FormSubNav */
+  .nav-link {
+    @apply rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900;
+  }
+
+  .nav-link-active {
+    @apply rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700;
+  }
+
+  .subnav-tab {
+    @apply border-b-2 border-transparent px-1 py-3 text-sm font-medium text-slate-500 transition hover:text-slate-900;
+  }
+
+  .subnav-tab-active {
+    @apply border-b-2 border-indigo-600 px-1 py-3 text-sm font-semibold text-indigo-700;
+  }
+
+  /* Icon + number + label summary tile — dashboard, analytics */
+  .stat-tile {
+    @apply flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5;
+  }
+
+  .stat-tile-icon {
+    @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-xl;
   }
 }
 

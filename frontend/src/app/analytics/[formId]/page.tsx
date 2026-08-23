@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import AppHeader from "../../../components/AppHeader";
+import FormSubNav from "../../../components/FormSubNav";
 import { apiFetch, getApiBaseUrl } from "../../../lib/api";
 import { getAuthToken } from "../../../lib/auth";
 
@@ -158,7 +160,7 @@ export default function AnalyticsPage() {
         name: "Forma",
         description: "Upgrade to Premium",
         order_id: orderId,
-        theme: { color: "#1f2937" },
+        theme: { color: "#4f46e5" },
       });
 
       checkout.open();
@@ -170,20 +172,15 @@ export default function AnalyticsPage() {
 
   return (
     <div className="page-bg">
+      <AppHeader />
+      <FormSubNav formId={formId} active="analytics" />
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">
-        <header className="card-elevated">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="eyebrow">Analytics</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">Form Insights</h1>
-              <p className="text-sm text-slate-600">
-                Responses, drop-off rates, and field-level activity.
-              </p>
-            </div>
-            <Link href="/dashboard" className="btn-secondary">
-              Back to Dashboard
-            </Link>
-          </div>
+        <header>
+          <p className="eyebrow">Analytics</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">Form Insights</h1>
+          <p className="text-sm text-slate-600">
+            Responses, drop-off rates, and field-level activity.
+          </p>
         </header>
 
         {upgradeRequired ? (
