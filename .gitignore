@@ -1,2 +1,6 @@
 # macOS Finder metadata
 .DS_Store
+
+# Filled-in deployment settings (see .env.production.example)
+.env
+.env.production

@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { apiFetch, getApiBaseUrl } from "../../../lib/api";
+import { apiFetch } from "../../../lib/api";
 import { isFieldVisible, type FormField } from "../../../stores/formBuilderStore";
 
 type FormResponse = {
@@ -29,7 +29,6 @@ export default function PublicFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<FileMap>({});
-  const apiBase = getApiBaseUrl();
 
   useEffect(() => {
     const fetchForm = async () => {

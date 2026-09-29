@@ -59,6 +59,47 @@ const schema = z
     // --- Email (optional by design) ---
     RESEND_API_KEY: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(1).default("Forma <onboarding@resend.dev>"),
+
+    // --- Processes ---
+    /**
+     * Run the queue workers inside the API process as well. Defaults to on in
+     * development (one command runs everything) and off otherwise: in
+     * production run `dist/worker.js` as its own process so the two scale and
+     * restart independently. Resolved in `runWorkersInApi`.
+     */
+    RUN_WORKERS_IN_API: z.stringbool().optional(),
+
+    // --- Public URLs ---
+    /**
+     * Origin this API is reachable at from the outside, used to build links to
+     * uploaded files. Required in production: behind a proxy the request's own
+     * Host header is not trustworthy.
+     */
+    PUBLIC_API_URL: z.url("must be a valid URL").optional(),
+
+    // --- File storage ---
+    STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+    /** Local driver only. Defaults to `backend/uploads`. */
+    UPLOAD_DIR: z.string().min(1).optional(),
+    S3_BUCKET: z.string().min(1).optional(),
+    /** `auto` for Cloudflare R2. */
+    S3_REGION: z.string().min(1).default("auto"),
+    /** Set for R2, MinIO or any S3-compatible store; omit for AWS. */
+    S3_ENDPOINT: z.url("must be a valid URL").optional(),
+    /** Omit both to use the default AWS credential chain (e.g. an IAM role). */
+    S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    /** MinIO needs path-style URLs. */
+    S3_FORCE_PATH_STYLE: z.stringbool().default(false),
+
+    // --- Observability ---
+    LOG_LEVEL: z
+      .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
+      .default("info"),
+    /** Errors are reported to Sentry when set. */
+    SENTRY_DSN: z.url("must be a valid URL").optional(),
+    /** Tags events with the deployed version, e.g. the git SHA. */
+    APP_RELEASE: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === "production") {
@@ -77,6 +118,32 @@ const schema = z
           message: `must be at least ${MIN_PRODUCTION_SECRET_LENGTH} characters in production (got ${value.JWT_SECRET.length})`,
         });
       }
+    }
+
+    if (value.NODE_ENV === "production" && !value.PUBLIC_API_URL) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["PUBLIC_API_URL"],
+        message:
+          "is required in production — set it to the public origin of this API " +
+          "(e.g. https://api.example.com) so file links point at the right host",
+      });
+    }
+
+    if (value.STORAGE_DRIVER === "s3" && !value.S3_BUCKET) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["S3_BUCKET"],
+        message: "is required when STORAGE_DRIVER=s3",
+      });
+    }
+
+    if (Boolean(value.S3_ACCESS_KEY_ID) !== Boolean(value.S3_SECRET_ACCESS_KEY)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [value.S3_ACCESS_KEY_ID ? "S3_SECRET_ACCESS_KEY" : "S3_ACCESS_KEY_ID"],
+        message: "must be set together with its pair, or both left unset",
+      });
     }
 
     // Partial billing config is worse than none: the upgrade flow would appear
@@ -103,7 +170,16 @@ const schema = z
     }
   });
 
-const parsed = schema.safeParse(process.env);
+/**
+ * An empty variable means "not set". Compose files and platform dashboards
+ * routinely pass optional settings through as `FOO=` — without this, each one
+ * would fail its format check instead of falling back to its default.
+ */
+const definedEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([, value]) => value !== "")
+);
+
+const parsed = schema.safeParse(definedEnv);
 
 if (!parsed.success) {
   const lines = parsed.error.issues.map((issue) => {
@@ -160,6 +236,14 @@ export const billingConfig =
       }
     : null;
 
+export const runWorkersInApi = env.RUN_WORKERS_IN_API ?? env.NODE_ENV === "development";
+
+/** Origin used in links to uploaded files. */
+export const publicApiUrl = (env.PUBLIC_API_URL ?? `http://localhost:${env.PORT}`).replace(
+  /\/+$/,
+  ""
+);
+
 /** Warnings for configuration that is valid but degrades a feature. */
 export const configWarnings: string[] = [
   billingConfig
@@ -173,5 +257,8 @@ export const configWarnings: string[] = [
     : null,
   isProduction && corsOrigins.some((origin) => origin.includes("localhost"))
     ? `CORS_ORIGINS still allows localhost (${corsOrigins.join(", ")}).`
+    : null,
+  isProduction && env.STORAGE_DRIVER === "local"
+    ? "STORAGE_DRIVER is local — uploads are lost on redeploy unless UPLOAD_DIR is on a persistent volume. Use s3 for container platforms."
     : null,
 ].filter((warning): warning is string => warning !== null);

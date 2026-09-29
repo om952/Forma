@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
-import { apiFetch, getApiBaseUrl } from "../../lib/api";
-import { getAuthToken } from "../../lib/auth";
+import { apiFetch } from "../../lib/api";
+import { useAuthToken } from "../../lib/auth";
 
 type SubscriptionStatus = {
   tier: "FREE" | "PREMIUM";
@@ -15,6 +15,11 @@ type SubscriptionStatus = {
 
 const RAZORPAY_KEY_ID =
   process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "YOUR_RAZORPAY_KEY_HERE";
+
+/** The subset of Razorpay's checkout.js used here. */
+type RazorpayCheckoutConstructor = new (options: Record<string, unknown>) => {
+  open: () => void;
+};
 
 const loadRazorpay = () =>
   new Promise<void>((resolve, reject) => {
@@ -40,16 +45,11 @@ export default function BillingPage() {
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const token = useAuthToken();
   const [selectedPlan, setSelectedPlan] = useState<"monthly" | "yearly">("monthly");
   const [notice, setNotice] = useState<string | null>(null);
   // Bumped to re-read the plan after a checkout or cancellation.
   const [refreshKey, setRefreshKey] = useState(0);
-  const apiBase = getApiBaseUrl();
-
-  useEffect(() => {
-    setToken(getAuthToken());
-  }, []);
 
   // The plan only changes once Razorpay's webhook reaches the server, so the
   // page always re-reads it rather than assuming what a checkout did.
@@ -103,7 +103,8 @@ export default function BillingPage() {
         keyId?: string;
       };
 
-      const RazorpayCtor = (window as Window & { Razorpay?: any }).Razorpay;
+      const RazorpayCtor = (window as Window & { Razorpay?: RazorpayCheckoutConstructor })
+        .Razorpay;
       if (!RazorpayCtor) throw new Error("Razorpay SDK not available");
 
       const checkout = new RazorpayCtor({

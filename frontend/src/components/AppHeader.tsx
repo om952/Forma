@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-
-import { clearAuthToken, getAuthUser, type AuthUser } from "../lib/auth";
+import { clearAuthToken, useAuthUser } from "../lib/auth";
 
 /**
  * Persistent top bar for every authenticated page. Rendered per-page rather
@@ -15,11 +13,7 @@ import { clearAuthToken, getAuthUser, type AuthUser } from "../lib/auth";
 export default function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
-
-  useEffect(() => {
-    setUser(getAuthUser());
-  }, []);
+  const user = useAuthUser();
 
   const handleSignOut = () => {
     clearAuthToken();

@@ -1,21 +1,15 @@
 import type { Request, Response } from "express";
 import { randomUUID } from "crypto";
-import fs from "fs";
 import path from "path";
 
 import { Router } from "express";
 
 import { prisma } from "../db/prisma";
 import { uploadLimiter } from "../middlewares/rateLimit.middleware";
+import { buildFileKey, fileUrlFor, storage } from "../storage";
 import { detectAllowedFile } from "../utils/fileType";
 
 const router = Router();
-
-const uploadDir = path.join(__dirname, "../../uploads");
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -65,7 +59,7 @@ router.post("/", uploadLimiter, async (req: Request, res: Response) => {
       return res.status(400).json({ message: "File size exceeds 5MB limit" });
     }
 
-    // basename() first so a name like "../../x" cannot escape the upload dir.
+    // Only the last path segment of whatever the browser sent is used.
     const originalName = path.basename(fileName);
     const detected = detectAllowedFile(buffer, originalName);
 
@@ -83,24 +77,21 @@ router.post("/", uploadLimiter, async (req: Request, res: Response) => {
       .replace(/[^a-zA-Z0-9-]/g, "_")
       .slice(0, 80);
     const safeName = `${baseName || "file"}.${detected.ext}`;
-    // Files are served publicly by name, so the name has to be unguessable:
-    // a timestamp and org id would let anyone enumerate other respondents'
-    // attachments.
-    const storedName = `${randomUUID()}_${safeName}`;
-    const filePath = path.join(uploadDir, storedName);
+    // The link is the only thing protecting the file, so the key has to be
+    // unguessable: a timestamp and org id would let anyone enumerate other
+    // respondents' attachments.
+    const key = buildFileKey(form.id, randomUUID(), safeName);
 
-    await fs.promises.writeFile(filePath, buffer);
-
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${storedName}`;
+    await storage.put(key, buffer, detected.mime);
 
     return res.json({
-      fileUrl,
+      fileUrl: fileUrlFor(key),
       fileName: safeName,
       fileType: detected.mime,
       size: buffer.length,
     });
   } catch (error) {
-    console.error("Upload failed", error);
+    req.log.error({ err: error }, "Upload failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 });

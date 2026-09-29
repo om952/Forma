@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
 import FormSubNav from "../../components/FormSubNav";
-import { apiFetch, getApiBaseUrl } from "../../lib/api";
-import { getAuthToken } from "../../lib/auth";
+import { apiFetch } from "../../lib/api";
+import { useAuthToken } from "../../lib/auth";
+import { useBrowserValue } from "../../lib/useBrowserValue";
 
 const FIELD_ICONS: Record<string, string> = {
   text: "✏️",
@@ -44,10 +44,19 @@ export default function FormBuilderPage() {
     removeRule,
     loadForm,
   } = useFormBuilderStore();
-  const [token, setToken] = useState<string | null>(null);
+  const token = useAuthToken();
   const [status, setStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [formId, setFormId] = useState<string | null>(null);
+  // Read the edit target straight off the URL rather than via useSearchParams,
+  // which would require wrapping this page in a Suspense boundary.
+  const formIdInUrl = useBrowserValue(
+    () => new URLSearchParams(window.location.search).get("formId"),
+    null
+  );
+  // Set once the page picks its own target: after saving a new form, or on
+  // "New Form". Until then the URL decides.
+  const [chosenFormId, setFormId] = useState<string | null | undefined>(undefined);
+  const formId = chosenFormId === undefined ? formIdInUrl : chosenFormId;
   const [isLoading, setIsLoading] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [fieldLabel, setFieldLabel] = useState("");
@@ -61,15 +70,6 @@ export default function FormBuilderPage() {
   const [ruleValue, setRuleValue] = useState("");
   const [ruleAction, setRuleAction] = useState<RuleAction>("show");
   const [ruleTargetFieldId, setRuleTargetFieldId] = useState("");
-  const apiBase = getApiBaseUrl();
-
-  useEffect(() => {
-    setToken(getAuthToken());
-    // Read the edit target straight off the URL rather than via useSearchParams,
-    // which would require wrapping this page in a Suspense boundary.
-    const editingId = new URLSearchParams(window.location.search).get("formId");
-    setFormId(editingId);
-  }, []);
 
   // Hydrate the builder when editing an existing form.
   useEffect(() => {
@@ -353,9 +353,6 @@ export default function FormBuilderPage() {
               >
                 {formId ? "New Form" : "Clear All"}
               </button>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                API: {apiBase}
-              </div>
               {token ? <p className="text-xs text-slate-500">Authenticated</p> : null}
               {status ? <div className="status-info">{status}</div> : null}
             </div>
@@ -456,7 +453,7 @@ export default function FormBuilderPage() {
               <div className="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-6">
                 <h3 className="text-lg font-semibold text-slate-900">Conditional Rules</h3>
                 <p className="text-sm text-slate-600">
-                  Show or hide fields based on another field's value.
+                  Show or hide fields based on another field&apos;s value.
                 </p>
 
                 <div className="mt-4 space-y-3">

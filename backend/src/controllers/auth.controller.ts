@@ -105,7 +105,7 @@ export const signup = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("signup failed", error);
+    req.log.error({ err: error }, "signup failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -175,7 +175,7 @@ export const login = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("login failed", error);
+    req.log.error({ err: error }, "login failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };

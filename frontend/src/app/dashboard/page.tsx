@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
-import { apiFetch, getApiBaseUrl } from "../../lib/api";
-import { canDeleteForm, getAuthToken, getAuthUser } from "../../lib/auth";
+import { apiFetch } from "../../lib/api";
+import { canDeleteForm, useAuthToken, useAuthUser } from "../../lib/auth";
 
 type FormItem = {
   id: string;
@@ -20,9 +20,8 @@ export default function DashboardPage() {
   const [forms, setForms] = useState<FormItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [canDelete, setCanDelete] = useState(false);
-  const apiBase = getApiBaseUrl();
+  const token = useAuthToken();
+  const canDelete = canDeleteForm(useAuthUser());
 
   const stats = useMemo(
     () => ({
@@ -32,11 +31,6 @@ export default function DashboardPage() {
     }),
     [forms]
   );
-
-  useEffect(() => {
-    setToken(getAuthToken());
-    setCanDelete(canDeleteForm(getAuthUser()));
-  }, []);
 
   useEffect(() => {
     const fetchForms = async () => {

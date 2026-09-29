@@ -6,8 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
-import { apiFetch, getApiBaseUrl } from "../../../lib/api";
-import { getAuthToken } from "../../../lib/auth";
+import { apiFetch } from "../../../lib/api";
+import { useAuthToken } from "../../../lib/auth";
 
 type AnalyticsSeries = {
   date: string;
@@ -37,12 +37,7 @@ export default function AnalyticsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [token, setToken] = useState<string | null>(null);
-  const apiBase = getApiBaseUrl();
-
-  useEffect(() => {
-    setToken(getAuthToken());
-  }, []);
+  const token = useAuthToken();
 
   const maxCount = useMemo(() => {
     if (!analytics?.series?.length) return 1;
@@ -167,11 +162,8 @@ export default function AnalyticsPage() {
             <Link href="/billing" className="btn-secondary mt-6 block w-full text-center">
               Manage subscription
             </Link>
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              API: {apiBase}
-            </div>
             {token ? (
-              <p className="mt-2 text-xs text-slate-500">Authenticated</p>
+              <p className="mt-4 text-xs text-slate-500">Authenticated</p>
             ) : (
               <p className="mt-2 text-xs text-slate-500">
                 Not signed in.{" "}
@@ -187,7 +179,7 @@ export default function AnalyticsPage() {
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-slate-900">Field Drop-off Rates</h2>
             <p className="text-sm text-slate-600">
-              Percentage of users who viewed a field but didn't fill it.
+              Percentage of users who viewed a field but didn&apos;t fill it.
             </p>
           </div>
 

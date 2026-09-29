@@ -100,7 +100,7 @@ export const createSubscription = async (req: Request, res: Response) => {
           p.interval === 1
       );
     } catch (error) {
-      console.error("Failed to list plans", error);
+      req.log.error({ err: error }, "Failed to list plans");
     }
 
     if (!planEntity) {
@@ -150,7 +150,7 @@ export const createSubscription = async (req: Request, res: Response) => {
       typedError?.message ??
       "Unknown error";
 
-    console.error("createSubscription failed", detail);
+    req.log.error({ err: error, detail }, "createSubscription failed");
     return res.status(502).json({
       message: "Razorpay subscription creation failed",
       detail,
@@ -272,7 +272,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
     return res.json({ received: true, outcome });
   } catch (error) {
     // A 500 makes Razorpay retry, which is what we want: nothing was recorded.
-    console.error("handleWebhook failed", error);
+    req.log.error({ err: error }, "handleWebhook failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -304,7 +304,7 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       cancelAtPeriodEnd: org.cancelAtPeriodEnd,
     });
   } catch (error) {
-    console.error("getSubscriptionStatus failed", error);
+    req.log.error({ err: error }, "getSubscriptionStatus failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -387,7 +387,7 @@ export const cancelSubscription = async (req: Request, res: Response) => {
       typedError?.error?.reason ??
       typedError?.message ??
       "Unknown error";
-    console.error("cancelSubscription failed", detail);
+    req.log.error({ err: error, detail }, "cancelSubscription failed");
     return res.status(502).json({ message: "Failed to cancel subscription", detail });
   }
 };

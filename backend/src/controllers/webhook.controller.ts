@@ -59,7 +59,7 @@ export const getWebhooks = async (req: Request, res: Response) => {
       }))
     );
   } catch (error) {
-    console.error("getWebhooks failed", error);
+    req.log.error({ err: error }, "getWebhooks failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -110,7 +110,7 @@ export const createWebhook = async (req: Request, res: Response) => {
       type: detectPayloadType(webhook.url),
     });
   } catch (error) {
-    console.error("createWebhook failed", error);
+    req.log.error({ err: error }, "createWebhook failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -164,7 +164,7 @@ export const updateWebhook = async (req: Request, res: Response) => {
       type: detectPayloadType(webhook.url),
     });
   } catch (error) {
-    console.error("updateWebhook failed", error);
+    req.log.error({ err: error }, "updateWebhook failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -195,7 +195,7 @@ export const deleteWebhook = async (req: Request, res: Response) => {
 
     return res.status(204).send();
   } catch (error) {
-    console.error("deleteWebhook failed", error);
+    req.log.error({ err: error }, "deleteWebhook failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -237,7 +237,7 @@ export const listDeadLetters = async (req: Request, res: Response) => {
 
     return res.json(deadLetters);
   } catch (error) {
-    console.error("listDeadLetters failed", error);
+    req.log.error({ err: error }, "listDeadLetters failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -284,7 +284,7 @@ export const replayDeadLetter = async (req: Request, res: Response) => {
 
     return res.json({ message: "Delivery re-queued", url: deadLetter.url });
   } catch (error) {
-    console.error("replayDeadLetter failed", error);
+    req.log.error({ err: error }, "replayDeadLetter failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -362,7 +362,7 @@ export const testWebhook = async (req: Request, res: Response) => {
       type,
     });
   } catch (error) {
-    console.error("testWebhook failed", error);
+    req.log.error({ err: error }, "testWebhook failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
