@@ -1,5 +1,6 @@
 import * as bcrypt from "bcrypt";
 import type { Request, Response } from "express";
+import type { z } from "zod";
 
 import { env } from "../config/env";
 import { prisma } from "../db/prisma";
@@ -9,13 +10,16 @@ import {
   sendVerificationEmail,
 } from "../services/accountTokens";
 import { signSessionToken, toPublicUser } from "../services/session";
-import {
-  isValidEmail,
-  normalizeEmail,
-  passwordProblem,
-  toSlug,
-} from "../utils/accountInput";
+import { toSlug } from "../utils/accountInput";
 import { HttpError } from "../utils/httpError";
+import type {
+  changePasswordBody,
+  forgotPasswordBody,
+  loginBody,
+  resetPasswordBody,
+  signupBody,
+  verifyEmailBody,
+} from "../validation/account";
 
 const SALT_ROUNDS = env.BCRYPT_SALT_ROUNDS;
 
@@ -28,177 +32,114 @@ let dummyHash: Promise<string> | undefined;
 const getDummyHash = () =>
   (dummyHash ??= bcrypt.hash("forma-timing-equaliser", SALT_ROUNDS));
 
-type SignupBody = {
-  email?: string;
-  password?: string;
-  organizationName?: string;
-};
-
-type LoginBody = {
-  email?: string;
-  password?: string;
-  organizationId?: string;
-  organizationName?: string;
-};
-
 export const signup = async (req: Request, res: Response) => {
-  try {
-    const { email, password, organizationName } = req.body as SignupBody;
+  const { email, password, organizationName } = req.body as z.output<typeof signupBody>;
 
-    if (!email || !password || !organizationName) {
-      return res
-        .status(400)
-        .json({ message: "email, password, organizationName are required" });
-    }
+  const slug = toSlug(organizationName);
+  if (!slug) {
+    throw new HttpError(400, "organizationName: must contain a letter or digit");
+  }
 
-    const invalidPassword = passwordProblem(password);
-    if (invalidPassword) {
-      return res.status(400).json({ message: invalidPassword });
-    }
+  const existingOrg = await prisma.organization.findUnique({ where: { slug } });
+  if (existingOrg) {
+    throw new HttpError(409, "Organization already exists");
+  }
 
-    const normalizedEmail = normalizeEmail(String(email));
-    if (!isValidEmail(normalizedEmail)) {
-      return res.status(400).json({ message: "email is invalid" });
-    }
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const orgName = String(organizationName).trim();
-    const slug = toSlug(orgName);
-
-    if (!slug) {
-      return res.status(400).json({ message: "organizationName is invalid" });
-    }
-
-    const existingOrg = await prisma.organization.findUnique({
-      where: { slug },
+  const { organization, user } = await prisma.$transaction(async (tx) => {
+    const organizationRecord = await tx.organization.create({
+      data: { name: organizationName, slug },
     });
 
-    if (existingOrg) {
-      return res.status(409).json({ message: "Organization already exists" });
-    }
-
-    const passwordHash = await bcrypt.hash(String(password), SALT_ROUNDS);
-
-    const { organization, user } = await prisma.$transaction(async (tx) => {
-      const organizationRecord = await tx.organization.create({
-        data: {
-          name: orgName,
-          slug,
-        },
-      });
-
-      const userRecord = await tx.user.create({
-        data: {
-          email: normalizedEmail,
-          passwordHash,
-          role: "OWNER",
-          orgId: organizationRecord.id,
-        },
-      });
-
-      return { organization: organizationRecord, user: userRecord };
-    });
-
-    // The account works without it; a failure here must not fail the signup.
-    try {
-      await sendVerificationEmail(user);
-    } catch (error) {
-      req.log.error({ err: error }, "Failed to queue verification email");
-    }
-
-    return res.status(201).json({
-      token: signSessionToken(user),
-      user: toPublicUser(user),
-      organization: {
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
+    const userRecord = await tx.user.create({
+      data: {
+        email,
+        passwordHash,
+        role: "OWNER",
+        orgId: organizationRecord.id,
       },
     });
+
+    return { organization: organizationRecord, user: userRecord };
+  });
+
+  // The account works without it; a failure here must not fail the signup.
+  try {
+    await sendVerificationEmail(user);
   } catch (error) {
-    req.log.error({ err: error }, "signup failed");
-    return res.status(500).json({ message: "Internal server error" });
+    req.log.error({ err: error }, "Failed to queue verification email");
   }
+
+  return res.status(201).json({
+    token: signSessionToken(user),
+    user: toPublicUser(user),
+    organization: {
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+    },
+  });
 };
 
 export const login = async (req: Request, res: Response) => {
-  try {
-    const { email, password, organizationId, organizationName } =
-      req.body as LoginBody;
+  const { email, password, organizationId, organizationName } =
+    req.body as z.output<typeof loginBody>;
 
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "email and password are required" });
-    }
+  let orgId = organizationId;
 
-    const normalizedEmail = normalizeEmail(String(email));
-    let orgId = organizationId ? String(organizationId) : undefined;
-
-    if (!orgId && organizationName) {
-      const slug = toSlug(String(organizationName));
-
-      if (!slug) {
-        return res
-          .status(400)
-          .json({ message: "organizationName is invalid" });
-      }
-
-      const org = await prisma.organization.findUnique({ where: { slug } });
-
-      if (!org) {
-        await bcrypt.compare(String(password), await getDummyHash());
-        return res.status(401).json({ message: "Invalid credentials" });
-      }
-
-      orgId = org.id;
-    }
-
-    // An address can have an account in several organizations (one per
-    // invitation accepted), each with its own password.
-    const candidates = await prisma.user.findMany({
-      where: {
-        email: normalizedEmail,
-        ...(orgId ? { orgId } : {}),
-      },
-      take: 20,
+  if (!orgId && organizationName) {
+    const org = await prisma.organization.findUnique({
+      where: { slug: toSlug(organizationName) },
     });
 
-    if (candidates.length === 0) {
-      await bcrypt.compare(String(password), await getDummyHash());
-      return res.status(401).json({ message: "Invalid credentials" });
+    if (!org) {
+      await bcrypt.compare(password, await getDummyHash());
+      throw new HttpError(401, "Invalid credentials");
     }
 
-    const matches = [];
-    for (const candidate of candidates) {
-      if (await bcrypt.compare(String(password), candidate.passwordHash)) {
-        matches.push(candidate);
-      }
-    }
-
-    const [user] = matches;
-
-    if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    // Only reached with a correct password, so it reveals nothing to someone
-    // guessing: the same password opens accounts in more than one org.
-    if (matches.length > 1) {
-      return res.status(409).json({
-        message:
-          "This email has accounts in more than one organization. Enter the organization name to choose one.",
-        code: "ORGANIZATION_REQUIRED",
-      });
-    }
-
-    return res.json({
-      token: signSessionToken(user),
-      user: toPublicUser(user),
-    });
-  } catch (error) {
-    req.log.error({ err: error }, "login failed");
-    return res.status(500).json({ message: "Internal server error" });
+    orgId = org.id;
   }
+
+  // An address can have an account in several organizations (one per
+  // invitation accepted), each with its own password.
+  const candidates = await prisma.user.findMany({
+    where: { email, ...(orgId ? { orgId } : {}) },
+    take: 20,
+  });
+
+  if (candidates.length === 0) {
+    await bcrypt.compare(password, await getDummyHash());
+    throw new HttpError(401, "Invalid credentials");
+  }
+
+  const matches = [];
+  for (const candidate of candidates) {
+    if (await bcrypt.compare(password, candidate.passwordHash)) {
+      matches.push(candidate);
+    }
+  }
+
+  const [user] = matches;
+
+  if (!user) {
+    throw new HttpError(401, "Invalid credentials");
+  }
+
+  // Only reached with a correct password, so it reveals nothing to someone
+  // guessing: the same password opens accounts in more than one org.
+  if (matches.length > 1) {
+    return res.status(409).json({
+      message:
+        "This email has accounts in more than one organization. Enter the organization name to choose one.",
+      code: "ORGANIZATION_REQUIRED",
+    });
+  }
+
+  return res.json({
+    token: signSessionToken(user),
+    user: toPublicUser(user),
+  });
 };
 
 /** The signed-in user and their organization, read fresh from the database. */
@@ -228,26 +169,15 @@ const RESET_REQUESTED_MESSAGE =
  * the response nor its timing reveals whether the address has an account.
  */
 export const forgotPassword = async (req: Request, res: Response) => {
-  const { email, organizationName } = req.body as {
-    email?: unknown;
-    organizationName?: unknown;
-  };
-
-  if (typeof email !== "string" || !isValidEmail(normalizeEmail(email))) {
-    throw new HttpError(400, "Enter a valid email address.");
-  }
-
-  const slug =
-    typeof organizationName === "string" && organizationName.trim()
-      ? toSlug(organizationName)
-      : undefined;
+  const { email, organizationName } = req.body as z.output<typeof forgotPasswordBody>;
+  const slug = organizationName?.trim() ? toSlug(organizationName) : undefined;
 
   res.json({ message: RESET_REQUESTED_MESSAGE });
 
   try {
     const users = await prisma.user.findMany({
       where: {
-        email: normalizeEmail(email),
+        email,
         ...(slug ? { organization: { slug } } : {}),
       },
       select: { id: true, email: true, organization: { select: { name: true } } },
@@ -265,14 +195,9 @@ export const forgotPassword = async (req: Request, res: Response) => {
 };
 
 export const resetPassword = async (req: Request, res: Response) => {
-  const { token, password } = req.body as { token?: unknown; password?: unknown };
+  const { token, password } = req.body as z.output<typeof resetPasswordBody>;
 
-  const invalidPassword = passwordProblem(password);
-  if (invalidPassword) {
-    throw new HttpError(400, invalidPassword);
-  }
-
-  const passwordHash = await bcrypt.hash(password as string, SALT_ROUNDS);
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {
@@ -308,7 +233,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 
 /** Works without a session, so the link can be opened in any browser. */
 export const verifyEmail = async (req: Request, res: Response) => {
-  const { token } = req.body as { token?: unknown };
+  const { token } = req.body as z.output<typeof verifyEmailBody>;
 
   await prisma.$transaction(async (tx) => {
     const userId = await consumeAuthToken(tx, token, "EMAIL_VERIFICATION");
@@ -360,19 +285,7 @@ export const resendVerification = async (req: Request, res: Response) => {
  * user stays signed in where they made the change.
  */
 export const changePassword = async (req: Request, res: Response) => {
-  const { currentPassword, newPassword } = req.body as {
-    currentPassword?: unknown;
-    newPassword?: unknown;
-  };
-
-  if (typeof currentPassword !== "string" || !currentPassword) {
-    throw new HttpError(400, "currentPassword is required");
-  }
-
-  const invalidPassword = passwordProblem(newPassword);
-  if (invalidPassword) {
-    throw new HttpError(400, invalidPassword.replace(/^password/, "newPassword"));
-  }
+  const { currentPassword, newPassword } = req.body as z.output<typeof changePasswordBody>;
 
   const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
 
@@ -388,7 +301,7 @@ export const changePassword = async (req: Request, res: Response) => {
   const updated = await prisma.user.update({
     where: { id: user.id },
     data: {
-      passwordHash: await bcrypt.hash(newPassword as string, SALT_ROUNDS),
+      passwordHash: await bcrypt.hash(newPassword, SALT_ROUNDS),
       tokenVersion: { increment: 1 },
     },
   });

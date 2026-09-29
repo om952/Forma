@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
-import { apiFetch, getApiBaseUrl } from "../../../lib/api";
+import { apiFetch, apiJson, errorMessage, getApiBaseUrl } from "../../../lib/api";
 import { getAuthToken } from "../../../lib/auth";
 
 const PRESET_WEBHOOKS = [
@@ -39,11 +39,17 @@ type DeadLetter = {
   failedAt: string;
 };
 
+type DeadLetterPage = { items: DeadLetter[]; nextCursor: string | null };
+
+const DEAD_LETTER_PAGE = 20;
+
 export default function WebhooksPage() {
   const params = useParams<{ formId?: string }>();
   const formId = typeof params.formId === "string" ? params.formId : "";
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [deadLetters, setDeadLetters] = useState<DeadLetter[]>([]);
+  const [deadLetterCursor, setDeadLetterCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
@@ -53,6 +59,10 @@ export default function WebhooksPage() {
   const apiBase = getApiBaseUrl();
 
   useEffect(() => {
+    // Ignores a response that arrives after the effect re-ran, so it cannot
+    // overwrite pages loaded since.
+    let cancelled = false;
+
     const fetchWebhooks = async () => {
       if (!formId || !token) {
         setLoading(false);
@@ -62,17 +72,23 @@ export default function WebhooksPage() {
       try {
         const authHeader = { Authorization: `Bearer ${token}` };
         const [webhooksRes, deadLettersRes] = await Promise.all([
-          apiFetch(`/api/webhooks/${formId}`, { headers: authHeader }),
-          apiFetch(`/api/webhooks/${formId}/dead-letters`, { headers: authHeader }),
+          apiFetch(`/api/webhooks?formId=${encodeURIComponent(formId)}`, { headers: authHeader }),
+          apiFetch(`/api/webhooks/${formId}/dead-letters?limit=${DEAD_LETTER_PAGE}`, {
+            headers: authHeader,
+          }),
         ]);
 
         if (!webhooksRes.ok) throw new Error("Failed to load webhooks");
         const data = (await webhooksRes.json()) as Webhook[];
+        if (cancelled) return;
         setWebhooks(data);
 
         // Only OWNER/ADMIN can read these; members just see no panel.
         if (deadLettersRes.ok) {
-          setDeadLetters((await deadLettersRes.json()) as DeadLetter[]);
+          const page = (await deadLettersRes.json()) as DeadLetterPage;
+          if (cancelled) return;
+          setDeadLetters(page.items);
+          setDeadLetterCursor(page.nextCursor);
         }
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "Error");
@@ -82,7 +98,28 @@ export default function WebhooksPage() {
     };
 
     fetchWebhooks();
+    return () => {
+      cancelled = true;
+    };
   }, [formId, token]);
+
+  const loadMoreDeadLetters = async () => {
+    if (!token || !deadLetterCursor) return;
+
+    setLoadingMore(true);
+    try {
+      const page = await apiJson<DeadLetterPage>(
+        `/api/webhooks/${formId}/dead-letters?limit=${DEAD_LETTER_PAGE}&cursor=${encodeURIComponent(deadLetterCursor)}`,
+        { token }
+      );
+      setDeadLetters((prev) => [...prev, ...page.items]);
+      setDeadLetterCursor(page.nextCursor);
+    } catch (error) {
+      setStatus(errorMessage(error));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleRetry = async (deadLetterId: string) => {
     if (!token) return;
@@ -124,13 +161,13 @@ export default function WebhooksPage() {
 
     setStatus(null);
     try {
-      const response = await apiFetch(`/api/webhooks/${formId}`, {
+      const response = await apiFetch("/api/webhooks", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ formId, url }),
       });
 
       if (!response.ok) {
@@ -363,6 +400,18 @@ export default function WebhooksPage() {
                 </div>
               ))}
             </div>
+            {deadLetterCursor ? (
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={loadMoreDeadLetters}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading…" : "Load older failures"}
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

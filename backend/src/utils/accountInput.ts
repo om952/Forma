@@ -11,21 +11,24 @@ export const isValidEmail = (value: string): boolean =>
 
 export const MIN_PASSWORD_LENGTH = 8;
 
-/** bcrypt ignores everything past 72 bytes; this keeps well clear of it. */
+/** bcrypt ignores everything past 72 bytes, so longer passwords are refused rather than silently cut short. */
 export const MAX_PASSWORD_LENGTH = 72;
 
-/** Why `value` is not an acceptable password, or null if it is. */
+/**
+ * Why `value` is not an acceptable password, or null if it is. Phrased to
+ * follow the field's name: "password must be at least 8 characters".
+ */
 export const passwordProblem = (value: unknown): string | null => {
   if (typeof value !== "string" || value.length === 0) {
-    return "password is required";
+    return "is required";
   }
 
   if (value.length < MIN_PASSWORD_LENGTH) {
-    return `password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+    return `must be at least ${MIN_PASSWORD_LENGTH} characters`;
   }
 
   if (Buffer.byteLength(value, "utf8") > MAX_PASSWORD_LENGTH) {
-    return `password must be at most ${MAX_PASSWORD_LENGTH} bytes`;
+    return `must be at most ${MAX_PASSWORD_LENGTH} bytes`;
   }
 
   return null;

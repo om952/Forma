@@ -1,20 +1,20 @@
 import type { Prisma } from "@prisma/client";
 import type { Request, Response } from "express";
+import type { z } from "zod";
 
 import { emailEnabled } from "../config/env";
 import { prisma } from "../db/prisma";
 import { queueAccountEmail } from "../queues/notification.queue";
 import { frontendLink } from "../services/accountTokens";
-import { isValidEmail, normalizeEmail } from "../utils/accountInput";
 import { HttpError } from "../utils/httpError";
 import {
   checkInvite,
   checkRemoval,
   checkRoleChange,
-  isOrgRole,
   type Decision,
   type OrgRole,
 } from "../utils/orgRoles";
+import type { changeRoleBody, createInviteBody } from "../validation/account";
 import { expiresIn, generateToken, hashToken, TOKEN_TTL_MS } from "../utils/tokens";
 
 const enforce = (decision: Decision) => {
@@ -65,12 +65,8 @@ export const listMembers = async (req: Request, res: Response) => {
 
 export const updateMemberRole = async (req: Request, res: Response) => {
   const actor = actorOf(req);
-  const targetId = String(req.params.userId);
-  const { role } = req.body as { role?: unknown };
-
-  if (!isOrgRole(role)) {
-    throw new HttpError(400, "role must be OWNER, ADMIN or MEMBER");
-  }
+  const targetId = (req.params as { userId: string }).userId;
+  const { role } = req.body as z.output<typeof changeRoleBody>;
 
   const updated = await prisma.$transaction(async (tx) => {
     const ownerCount = await lockOwners(tx, actor.orgId);
@@ -107,7 +103,7 @@ export const updateMemberRole = async (req: Request, res: Response) => {
  */
 export const removeMember = async (req: Request, res: Response) => {
   const actor = actorOf(req);
-  const targetId = String(req.params.userId);
+  const targetId = (req.params as { userId: string }).userId;
 
   await prisma.$transaction(async (tx) => {
     const ownerCount = await lockOwners(tx, actor.orgId);
@@ -168,19 +164,9 @@ export const listInvites = async (req: Request, res: Response) => {
  */
 export const createInvite = async (req: Request, res: Response) => {
   const actor = actorOf(req);
-  const { email, role } = req.body as { email?: unknown; role?: unknown };
-
-  if (typeof email !== "string" || !isValidEmail(normalizeEmail(email))) {
-    throw new HttpError(400, "Enter a valid email address.");
-  }
-
-  if (!isOrgRole(role)) {
-    throw new HttpError(400, "role must be ADMIN or MEMBER");
-  }
+  const { email: address, role } = req.body as z.output<typeof createInviteBody>;
 
   enforce(checkInvite(actor.role, role));
-
-  const address = normalizeEmail(email);
 
   const existing = await req.db!.user.findFirst({
     where: { email: address },
@@ -247,7 +233,7 @@ export const revokeInvite = async (req: Request, res: Response) => {
   const actor = actorOf(req);
 
   const invite = await req.db!.invite.findFirst({
-    where: { id: String(req.params.inviteId), acceptedAt: null },
+    where: { id: (req.params as { inviteId: string }).inviteId, acceptedAt: null },
     select: { id: true, role: true },
   });
 

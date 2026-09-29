@@ -11,7 +11,7 @@ Forma is a multi-tenant B2B SaaS form builder with authentication, org-scoped da
 - **Public submissions**: Forms can be submitted publicly without JWT. Submissions are stored as responses tied to the form and org.
 - **Webhook engine**: Each submission can trigger one or more webhooks through BullMQ + Redis, with retries and backoff. Deliveries that exhaust every retry land in a dead-letter table and can be inspected and replayed from the UI.
 - **Email notifications**: Form owners are emailed on each submission, and respondents who supply an email address get a confirmation. Delivered through a separate BullMQ queue.
-- **Analytics**: View response totals and daily submission counts for the last 7 days, plus per-field drop-off rates and a submission heatmap. Premium-only.
+- **Analytics**: A start-to-completion funnel, per-field drop-off (where people who started the form gave up), per-field skip rates, daily submissions and a weekday-by-hour submission heatmap, over 7, 30 or 90 days in the viewer's time zone. Premium-only.
 - **Monetization**: Free tier allows up to 3 forms. Premium unlocks unlimited forms and analytics. Razorpay handles payments and upgrades.
 
 ## Tech stack
@@ -58,19 +58,55 @@ their next request, and a token whose version is stale is refused.
 
 ### 2) Create a form
 - `POST /api/forms` (JWT required)
-If org tier is FREE and already has 3 forms, returns 403.
+- `GET /api/forms?limit=&cursor=` returns a page of forms, newest first:
+  `{ items, nextCursor }`. `GET /api/forms/summary` returns the dashboard
+  totals.
+
+The schema is validated as a whole: unique field ids, options on every select
+field, and rules that belong to their target field and depend on another field
+of the same form. If the org is on the FREE tier and already has 3 forms, the
+request returns 403.
 
 ### 3) Submit a form (public)
-- `POST /api/responses/:formId`
-Stores the response and queues webhooks.
+- `POST /api/responses/:formId`: answers keyed by field id, all strings.
+- `GET /api/responses/:formId?limit=&cursor=` returns
+  `{ items, nextCursor, total }`.
+- `GET /api/responses/:formId/export` streams every response as CSV, in
+  batches.
+
+Only the form's own fields are stored, and answers to fields hidden by a rule
+are dropped. The response is then stored and its webhooks queued.
 
 ### 4) Webhook delivery
-- BullMQ worker pulls `webhook-deliveries` jobs from Redis and POSTs payloads.
-- Retries are enabled with exponential backoff.
+- `GET /api/webhooks?formId=`, `POST /api/webhooks` (`{ formId, url }`),
+  `PATCH|DELETE /api/webhooks/:webhookId`
+- A BullMQ worker pulls `webhook-deliveries` jobs from Redis and POSTs the
+  payloads, retrying with exponential backoff.
+- Deliveries that exhaust every retry go to a dead-letter table. Owners and
+  admins can list them (`GET /api/webhooks/:formId/dead-letters`, paginated)
+  and replay them.
 
-### 5) Analytics
-- `GET /api/analytics/:formId` (JWT required)
-Returns total responses and a 7-day daily series.
+### 5) Analytics (Premium)
+- `GET /api/analytics/:formId?days=7|30|90&timeZone=Asia/Kolkata`
+
+Everything is aggregated in Postgres, so results are exact at any volume.
+Nothing is sampled or capped.
+- **Funnel**: views, starts, completions, abandoned visits and median time to
+  complete.
+- **Per-field drop-off**: for each field, how many visitors reached it and how
+  many left the form there.
+- **Skip rate**: of the submissions that showed a field, the share that left
+  it blank. Each form's visibility rules are compiled to SQL, so a hidden field
+  doesn't count as skipped.
+- **Daily series** and a **weekday × hour heatmap**, counted in the viewer's
+  time zone.
+
+The funnel and drop-off come from anonymous visit tracking on the public form
+page. The page records `POST /api/forms/:id/sessions` when the form opens and
+`POST /api/forms/:id/sessions/:sessionId/fields` the first time each field is
+reached. The submission carries an `X-Form-Session` header, which links the
+visit to its response. Tracking stores no IP address, user agent or answers. A
+visit with no activity for 30 minutes and no submission counts as abandoned.
 
 ### 6) Payments and upgrade
 - `POST /api/payments/create-subscription` (owner or admin)
@@ -106,6 +142,31 @@ SHA-256 of each token is stored. Reset links last 1 hour, confirmation links 24
 hours, and both work once. Resetting or changing a password signs out every
 other session. Email confirmation is a soft gate: unconfirmed accounts work
 and see a reminder.
+
+## API reference
+
+The server publishes an OpenAPI 3.1 description of every endpoint at
+`GET /api/openapi.json`. Open it in any OpenAPI viewer, such as Swagger Editor
+or Scalar.
+
+Each route is declared once, in `backend/src/routes/*.routes.ts`, with its
+access rule (public, any member, or specific roles) and its Zod schemas for the
+path, query and body. The same declaration builds the Express route, including
+authentication, the role check and validation, and generates its entry in the
+document. The two can't drift apart.
+
+Invalid input is refused with a 400 before reaching a handler:
+
+```json
+{
+  "message": "schema.1.id: is used by another field",
+  "requestId": "…",
+  "issues": [{ "path": "schema.1.id", "message": "is used by another field" }]
+}
+```
+
+List endpoints use cursor pagination: pass `nextCursor` back as `cursor` to get
+the next page. `limit` defaults to 20 and is capped at 100.
 
 ## Local setup
 
@@ -244,8 +305,9 @@ container or host.
   `docker compose ... logs -f api worker`. Set `LOG_LEVEL` to change verbosity.
 - Set `SENTRY_DSN` to report errors to Sentry. Images built with the
   `APP_RELEASE` build arg tag events with that version.
-- `deploy/smoke-test.sh [base-url]` signs up, builds a form, uploads a file,
-  and submits and reads back a response through the proxy. It leaves that
+- `deploy/smoke-test.sh [base-url]` checks through the proxy that the API
+  reference is served. It then signs up, builds a form, uploads a file, submits
+  and reads back a response, and invites a teammate. It leaves that
   test data behind, so run it against a throwaway stack, not production.
 
 ### Other platforms

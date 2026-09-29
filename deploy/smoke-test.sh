@@ -42,6 +42,11 @@ ready="$(request GET /health/ready 200)"
 [[ "$ready" == *'"status":"ok"'* ]] || fail "/health/ready: $ready"
 echo "$ready"
 
+step "API reference"
+spec="$(request GET /api/openapi.json 200)"
+[[ "$spec" == *'"openapi":"3.1.0"'* ]] || fail "/api/openapi.json is not an OpenAPI 3.1 document"
+echo "OpenAPI document served"
+
 step "Frontend pages"
 for page in / /auth /dashboard /builder; do
   request GET "$page" 200 >/dev/null

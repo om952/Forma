@@ -1,6 +1,8 @@
 import type { Request, Response } from "express";
 
 import { webhookQueue } from "../queues/webhook.queue";
+import { pageArgs, pageOf } from "../utils/pagination";
+import type { Pagination } from "../validation/common";
 import { BlockedUrlError, assertDeliverableUrl } from "../utils/ssrf";
 import { detectPayloadType } from "../utils/webhook.utils";
 
@@ -26,7 +28,7 @@ export const getWebhooks = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { formId } = req.params as { formId?: string };
+    const { formId } = req.query as { formId?: string };
 
     if (!formId || typeof formId !== "string") {
       return res.status(400).json({ message: "formId is required" });
@@ -70,8 +72,7 @@ export const createWebhook = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { formId } = req.params as { formId?: string };
-    const { url } = req.body as { url?: string };
+    const { formId, url } = req.body as { formId?: string; url?: string };
 
     if (!formId || typeof formId !== "string") {
       return res.status(400).json({ message: "formId is required" });
@@ -200,7 +201,7 @@ export const deleteWebhook = async (req: Request, res: Response) => {
   }
 };
 
-/** Deliveries that exhausted every retry, newest first. */
+/** Deliveries that exhausted every retry, newest first, a page at a time. */
 export const listDeadLetters = async (req: Request, res: Response) => {
   try {
     if (!req.user || !req.db) {
@@ -222,10 +223,11 @@ export const listDeadLetters = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Form not found" });
     }
 
+    const page = req.query as unknown as Pagination;
     const deadLetters = await req.db.webhookDeadLetter.findMany({
       where: { formId },
-      orderBy: { failedAt: "desc" },
-      take: 100,
+      orderBy: [{ failedAt: "desc" }, { id: "desc" }],
+      ...pageArgs(page),
       select: {
         id: true,
         url: true,
@@ -235,7 +237,7 @@ export const listDeadLetters = async (req: Request, res: Response) => {
       },
     });
 
-    return res.json(deadLetters);
+    return res.json(pageOf(deadLetters, page.limit));
   } catch (error) {
     req.log.error({ err: error }, "listDeadLetters failed");
     return res.status(500).json({ message: "Internal server error" });

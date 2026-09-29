@@ -1,11 +1,10 @@
-import { Router, type Request, type Response } from "express";
+import type { Request, Response } from "express";
 
 import { prisma } from "../db/prisma";
 import { logger } from "../observability/logger";
 import { redisRequestConnection } from "../queues/redis";
 import { isShuttingDown } from "../shutdown";
-
-const router = Router();
+import { route, type RouteSpec } from "./define";
 
 const CHECK_TIMEOUT_MS = 2000;
 
@@ -49,16 +48,13 @@ const live = (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 };
 
-router.get("/live", live);
-// The original endpoint, kept for anything already pointed at it.
-router.get("/", live);
 
 /**
  * Readiness: this instance can serve traffic right now. A load balancer stops
  * routing to an instance that fails it, which is also how a draining instance
  * is taken out of rotation during shutdown.
  */
-router.get("/ready", async (_req, res) => {
+const ready = async (_req: Request, res: Response) => {
   if (isShuttingDown()) {
     return res.status(503).json({ status: "shutting_down" });
   }
@@ -74,6 +70,36 @@ router.get("/ready", async (_req, res) => {
     status: ok ? "ok" : "unavailable",
     checks: { database, redis },
   });
-});
+};
 
-export default router;
+export const healthRoutes: RouteSpec[] = [
+  route({
+    method: "get",
+    path: "/live",
+    summary: "Liveness: the process is up",
+    access: "public",
+    responses: { 200: "`{ status: \"ok\" }`." },
+    handler: live,
+  }),
+  // The original endpoint, kept for anything already pointed at it.
+  route({
+    method: "get",
+    path: "/",
+    summary: "Liveness (original path)",
+    operationId: "liveLegacy",
+    access: "public",
+    responses: { 200: "`{ status: \"ok\" }`." },
+    handler: live,
+  }),
+  route({
+    method: "get",
+    path: "/ready",
+    summary: "Readiness: Postgres and Redis are reachable",
+    access: "public",
+    responses: {
+      200: "Ready to serve traffic.",
+      503: "A dependency is down, or the instance is shutting down.",
+    },
+    handler: ready,
+  }),
+];

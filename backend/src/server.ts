@@ -24,18 +24,11 @@ import helmet from "helmet";
 import { apiLimiter } from "./middlewares/rateLimit.middleware";
 import { httpLogger, logger } from "./observability/logger";
 import { registerGracefulShutdown } from "./shutdown";
-import authRoutes from "./routes/auth.routes";
-import analyticsRoutes from "./routes/analytics.routes";
-import filesRoutes from "./routes/files.routes";
-import formRoutes from "./routes/form.routes";
-import inviteRoutes from "./routes/invite.routes";
-import orgRoutes from "./routes/org.routes";
-import healthRoutes from "./routes/health.routes";
-import paymentRoutes from "./routes/payment.routes";
-import responseRoutes from "./routes/response.routes";
-import uploadRoutes from "./routes/upload.routes";
-import webhookRoutes from "./routes/webhook.routes";
+import { buildOpenApiDocument } from "./openapi/document";
+import { buildRouter } from "./routes/define";
+import { mounts } from "./routes";
 import { defaultUploadDir } from "./storage/local";
+import { HttpError } from "./utils/httpError";
 import { startWorkers } from "./workers";
 
 const app = express();
@@ -97,20 +90,24 @@ app.use(
   })
 );
 
-app.use("/health", healthRoutes);
-
+// Everything under /api shares one rate budget; /health does not count.
 app.use("/api", apiLimiter);
 
-app.use("/api/auth", authRoutes);
-app.use("/api/analytics", analyticsRoutes);
-app.use("/api/files", filesRoutes);
-app.use("/api/forms", formRoutes);
-app.use("/api/invites", inviteRoutes);
-app.use("/api/org", orgRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/responses", responseRoutes);
-app.use("/api/uploads", uploadRoutes);
-app.use("/api/webhooks", webhookRoutes);
+for (const { prefix, routes } of mounts) {
+  app.use(prefix, buildRouter(routes));
+}
+
+/** The API reference, generated from the same route declarations. */
+const openApiDocument = buildOpenApiDocument(mounts, {
+  title: "Forma API",
+  version: env.APP_RELEASE ?? "development",
+  description:
+    "Multi-tenant form builder. Authenticate with `Authorization: Bearer <token>` from `/api/auth/login`. Errors are `{ message, requestId, issues? }`.",
+});
+
+app.get("/api/openapi.json", (_req, res) => {
+  res.json(openApiDocument);
+});
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Not found" });
@@ -135,8 +132,9 @@ app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
       typeof error === "object" && error && "expose" in error && error.expose;
     const message =
       expose && error instanceof Error ? error.message : "Bad request";
+    const details = error instanceof HttpError ? error.details : undefined;
 
-    return res.status(status).json({ message, requestId: req.id });
+    return res.status(status).json({ message, requestId: req.id, ...details });
   }
 
   req.log.error({ err: error }, "Unhandled error in request");

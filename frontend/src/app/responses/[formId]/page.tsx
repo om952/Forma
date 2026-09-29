@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
-import { apiFetch } from "../../../lib/api";
+import { apiFetch, apiJson, errorMessage } from "../../../lib/api";
 import { useAuthToken } from "../../../lib/auth";
 
 type ResponseItem = {
@@ -14,6 +14,14 @@ type ResponseItem = {
   payload: Record<string, string>;
   submittedAt: string;
 };
+
+type ResponsePage = {
+  items: ResponseItem[];
+  nextCursor: string | null;
+  total: number;
+};
+
+const PAGE_SIZE = 25;
 
 type FormSummary = {
   name: string;
@@ -28,9 +36,16 @@ export default function ResponsesPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const token = useAuthToken();
 
   useEffect(() => {
+    // Ignores a response that arrives after the effect re-ran, so it cannot
+    // overwrite pages loaded since.
+    let cancelled = false;
+
     const fetchData = async () => {
       if (!formId || !token) {
         setLoading(false);
@@ -41,7 +56,7 @@ export default function ResponsesPage() {
         setLoading(true);
         const authHeader = { Authorization: `Bearer ${token}` };
         const [responsesRes, formRes] = await Promise.all([
-          apiFetch(`/api/responses/${formId}`, { headers: authHeader }),
+          apiFetch(`/api/responses/${formId}?limit=${PAGE_SIZE}`, { headers: authHeader }),
           apiFetch(`/api/forms/${formId}`, { headers: authHeader }),
         ]);
 
@@ -50,8 +65,11 @@ export default function ResponsesPage() {
           throw new Error(body.message || "Failed to load responses");
         }
 
-        const data = (await responsesRes.json()) as ResponseItem[];
-        setResponses(data);
+        const data = (await responsesRes.json()) as ResponsePage;
+        if (cancelled) return;
+        setResponses(data.items);
+        setNextCursor(data.nextCursor);
+        setTotal(data.total);
 
         // Used to show field labels instead of raw field ids.
         if (formRes.ok) {
@@ -66,7 +84,29 @@ export default function ResponsesPage() {
     };
 
     fetchData();
+    return () => {
+      cancelled = true;
+    };
   }, [formId, token]);
+
+  const loadMore = async () => {
+    if (!token || !nextCursor) return;
+
+    setLoadingMore(true);
+    try {
+      const page = await apiJson<ResponsePage>(
+        `/api/responses/${formId}?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(nextCursor)}`,
+        { token }
+      );
+      setResponses((prev) => [...prev, ...page.items]);
+      setNextCursor(page.nextCursor);
+      setTotal(page.total);
+    } catch (error) {
+      setStatus(errorMessage(error));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const labelForField = (fieldId: string) =>
     form?.schema?.find((field) => field.id === fieldId)?.label ?? fieldId;
@@ -113,6 +153,12 @@ export default function ResponsesPage() {
             <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">
               {form?.name ?? "Submissions"}
             </h1>
+            {total > 0 ? (
+              <p className="mt-1 text-sm text-slate-500">
+                {total} {total === 1 ? "response" : "responses"}
+                {responses.length < total ? ` · showing the latest ${responses.length}` : ""}
+              </p>
+            ) : null}
           </div>
           <button
             onClick={handleExport}
@@ -164,6 +210,18 @@ export default function ResponsesPage() {
                 </div>
               </div>
             ))}
+            {nextCursor ? (
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading…" : "Load older responses"}
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </div>

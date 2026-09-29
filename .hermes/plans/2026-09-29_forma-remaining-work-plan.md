@@ -61,31 +61,40 @@ one IP will need a test-only override.
 
 ---
 
-## Phase 3: API Correctness & Hardening
+## Phase 3: API Correctness & Hardening — DONE 2026-09-29
 
-**Goal:** Close the gaps the audits flagged in request handling and
-analytics.
+- [x] Zod validation on every route's params, query and body. Each route is
+      declared once (`routes/*.routes.ts`) with its access rule and schemas;
+      one builder turns that into the Express route (auth, role check,
+      validation) and into the OpenAPI entry. 400s carry `issues` per field.
+      Form schemas are validated as a whole (unique ids, select options,
+      rules referencing real fields); submissions must be strings and only
+      the form's own fields are stored.
+- [x] Cursor pagination: forms (+ `/api/forms/summary` for dashboard
+      totals), responses (+ total), webhook dead letters. CSV export streams
+      in 1,000-row batches with backpressure.
+- [x] Analytics entirely in SQL, no cap: funnel (views, starts,
+      completions, abandoned, median time), true per-field drop-off from
+      anonymous visit tracking (`FormSession`), skip rates with visibility
+      rules compiled to SQL (randomised check: matches `isFieldVisible`
+      exactly), daily series and weekday x hour heatmap in the viewer's
+      time zone over 7/30/90 days. New analytics page built to the dataviz
+      checks (validated palette, table views, keyboard tooltips).
+- [x] OpenAPI 3.1 at `GET /api/openapi.json`, generated from the route
+      declarations; Redocly lint: valid.
 
-- [ ] Zod validation on every controller's request body/params/query.
-      `zod` is already a dependency and used in `config/env.ts`; nothing in
-      `src/controllers` uses it yet.
-- [ ] Pagination: `GET /api/forms`, `GET /api/responses/:formId`, and the
-      webhook dead-letter list — cursor or page+limit, capped page size.
-- [ ] Analytics: `analytics.controller.ts:72` caps at `take: 1000` and
-      aggregates in memory — move to SQL `groupBy`/raw aggregation so it's
-      correct past 1,000 responses.
-- [ ] Analytics: the "heatmap" is a per-field view-count grid, not a time
-      heatmap — decide whether to build a real day×hour heatmap or rename
-      the feature; either way, track form *views* and *starts* (not just
-      completions) so drop-off/abandonment is measurable, not just
-      per-field blank rate among submitters.
-- [ ] OpenAPI spec (generated from the Zod schemas above, or hand-written) —
-      also closes the "no API docs" gap.
+**Fixed along the way:** the dead-letter list/replay routes checked roles
+without authenticating, so they always returned 403 (the resume's
+"inspect and replay from the UI" did not work); `GET/POST /api/webhooks/:formId`
+collided with `PATCH/DELETE /api/webhooks/:webhookId` (list/create now take
+`formId` in the query/body); a non-string answer crashed submission with a
+500; three list pages could be overwritten by a stale initial fetch.
 
-**Deliverable:** Bad input gets a 400 with a clear message instead of a 500
-or silent wrong behavior; list endpoints don't degrade as data grows;
-analytics numbers are correct at any response count.
-**Effort:** ~1 week.
+**Verified:** 158 backend unit tests; 61 Phase 3 + 74 Phase 2 API checks;
+16 headless-browser checks; production Docker stack smoke test.
+
+**Carry-over:** `FormSession` rows grow with every visit; a retention job
+(e.g. drop visits older than 180 days) belongs in Phase 5.
 
 ---
 

@@ -1,6 +1,10 @@
 import type { Request, Response } from "express";
 
 import { prisma } from "../db/prisma";
+import { HttpError } from "../utils/httpError";
+import { pageArgs, pageOf } from "../utils/pagination";
+import type { Pagination } from "../validation/common";
+import { completeFormSession } from "./formSession.controller";
 import { notificationQueue } from "../queues/notification.queue";
 import { webhookQueue } from "../queues/webhook.queue";
 import {
@@ -17,46 +21,33 @@ import {
 
 type SubmissionBody = Record<string, string>;
 
-type SubmitParams = {
-  formId?: string;
+/** A form of the caller's organization, or a 404. */
+const findOwnForm = async (req: Request) => {
+  const form = await req.db!.form.findFirst({
+    where: { id: (req.params as { formId: string }).formId },
+    select: { id: true, name: true, schema: true },
+  });
+
+  if (!form) throw new HttpError(404, "Form not found");
+  return form;
 };
 
+/** A form's responses, newest first, a page at a time, with the overall total. */
 export const getFormResponses = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !req.db) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+  const form = await findOwnForm(req);
+  const page = req.query as unknown as Pagination;
 
-    const { formId } = req.params as { formId?: string };
+  const [rows, total] = await Promise.all([
+    req.db!.response.findMany({
+      where: { formId: form.id },
+      orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+      ...pageArgs(page),
+      select: { id: true, payload: true, submittedAt: true },
+    }),
+    req.db!.response.count({ where: { formId: form.id } }),
+  ]);
 
-    if (!formId || typeof formId !== "string") {
-      return res.status(400).json({ message: "formId is required" });
-    }
-
-    const form = await req.db.form.findFirst({
-      where: { id: formId, orgId: req.user.orgId },
-      select: { id: true },
-    });
-
-    if (!form) {
-      return res.status(404).json({ message: "Form not found" });
-    }
-
-    const responses = await req.db.response.findMany({
-      where: { formId, orgId: req.user.orgId },
-      orderBy: { submittedAt: "desc" },
-      select: {
-        id: true,
-        payload: true,
-        submittedAt: true,
-      },
-    });
-
-    return res.json(responses);
-  } catch (error) {
-    req.log.error({ err: error }, "getFormResponses failed");
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  return res.json({ ...pageOf(rows, page.limit), total });
 };
 
 /** Spreadsheet apps treat these leading characters as the start of a formula. */
@@ -74,77 +65,69 @@ const csvEscape = (value: unknown): string => {
   return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 };
 
+const EXPORT_BATCH = 1000;
+
+/**
+ * Every response as CSV, streamed in batches so memory use stays flat however
+ * many responses the form has. If the database fails partway, the connection
+ * is cut rather than ending cleanly, so the download shows as failed instead
+ * of silently truncated.
+ */
 export const exportResponsesCsv = async (req: Request, res: Response) => {
+  const form = await findOwnForm(req);
+  const schema = (form.schema as FormField[] | null) ?? [];
+  const safeName = form.name.replace(/[^a-zA-Z0-9-_ ]/g, "").trim() || "form";
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeName}-responses.csv"`);
+
+  const line = (cells: unknown[]) => `${cells.map(csvEscape).join(",")}\r\n`;
+
+  // Leading BOM so Excel reads the file as UTF-8.
+  res.write(`\uFEFF${line([...schema.map((field) => field.label), "Submitted At"])}`);
+
   try {
-    if (!req.user || !req.db) {
-      return res.status(401).json({ message: "Unauthorized" });
+    let cursor: string | undefined;
+
+    for (;;) {
+      const batch = await req.db!.response.findMany({
+        where: { formId: form.id },
+        orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+        ...pageArgs({ limit: EXPORT_BATCH, ...(cursor ? { cursor } : {}) }),
+        select: { id: true, payload: true, submittedAt: true },
+      });
+      const { items, nextCursor } = pageOf(batch, EXPORT_BATCH);
+
+      const chunk = items
+        .map((response) => {
+          const payload = (response.payload ?? {}) as Record<string, string>;
+          return line([
+            ...schema.map((field) => payload[field.id] ?? ""),
+            response.submittedAt.toISOString(),
+          ]);
+        })
+        .join("");
+
+      // Respect backpressure from a slow client.
+      if (chunk && !res.write(chunk)) {
+        await new Promise((resolve) => res.once("drain", resolve));
+      }
+
+      if (!nextCursor) break;
+      cursor = nextCursor;
     }
 
-    const { formId } = req.params as { formId?: string };
-
-    if (!formId || typeof formId !== "string") {
-      return res.status(400).json({ message: "formId is required" });
-    }
-
-    const form = await req.db.form.findFirst({
-      where: { id: formId, orgId: req.user.orgId },
-      select: { id: true, name: true, schema: true },
-    });
-
-    if (!form) {
-      return res.status(404).json({ message: "Form not found" });
-    }
-
-    const schema = (form.schema as FormField[] | null) ?? [];
-
-    const responses = await req.db.response.findMany({
-      where: { formId, orgId: req.user.orgId },
-      orderBy: { submittedAt: "desc" },
-      select: { payload: true, submittedAt: true },
-    });
-
-    const header = [...schema.map((field) => field.label), "Submitted At"];
-    const rows = responses.map((response) => {
-      const payload = (response.payload ?? {}) as Record<string, string>;
-      return [
-        ...schema.map((field) => payload[field.id] ?? ""),
-        response.submittedAt.toISOString(),
-      ];
-    });
-
-    const csv = [header, ...rows]
-      .map((row) => row.map(csvEscape).join(","))
-      .join("\r\n");
-
-    const safeName =
-      form.name.replace(/[^a-zA-Z0-9-_ ]/g, "").trim() || "form";
-
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${safeName}-responses.csv"`
-    );
-    // Leading BOM so Excel reads the file as UTF-8.
-    return res.send(`﻿${csv}`);
+    res.end();
   } catch (error) {
-    req.log.error({ err: error }, "exportResponsesCsv failed");
-    return res.status(500).json({ message: "Internal server error" });
+    req.log.error({ err: error }, "CSV export failed partway");
+    res.destroy(error instanceof Error ? error : undefined);
   }
 };
 
 export const submitForm = async (req: Request, res: Response) => {
   try {
-    const { formId } = req.params as SubmitParams;
-
-    if (!formId) {
-      return res.status(400).json({ message: "formId is required" });
-    }
-
-    const payload = req.body as SubmissionBody;
-
-    if (!payload || typeof payload !== "object") {
-      return res.status(400).json({ message: "payload must be an object" });
-    }
+    const { formId } = req.params as { formId: string };
+    const answers = req.body as SubmissionBody;
 
     const form = await prisma.form.findUnique({
       where: { id: formId },
@@ -163,6 +146,13 @@ export const submitForm = async (req: Request, res: Response) => {
     }
 
     const schema = form.schema as FormField[];
+
+    // Only the form's own fields are stored; anything else sent is dropped.
+    const payload: SubmissionBody = {};
+    for (const field of schema) {
+      const value = answers[field.id];
+      if (value !== undefined) payload[field.id] = value;
+    }
 
     for (const field of schema) {
       if (!isFieldVisible(field, payload)) {
@@ -185,9 +175,15 @@ export const submitForm = async (req: Request, res: Response) => {
       data: {
         formId: form.id,
         orgId: form.orgId,
-        payload: payload as any,
+        payload,
       },
     });
+
+    try {
+      await completeFormSession(req.get("x-form-session"), form.id, responseRecord.id);
+    } catch (error) {
+      req.log.warn({ err: error }, "Failed to link the submission to its visit");
+    }
 
     const webhooks = await prisma.webhook.findMany({
       where: {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, apiJson, errorMessage } from "../../lib/api";
 import { canDeleteForm, useAuthToken, useAuthUser } from "../../lib/auth";
 
 type FormItem = {
@@ -16,6 +16,12 @@ type FormItem = {
   _count: { responses: number };
 };
 
+type FormPage = { items: FormItem[]; nextCursor: string | null };
+
+type Summary = { forms: number; activeForms: number; responses: number };
+
+const PAGE_SIZE = 24;
+
 export default function DashboardPage() {
   const [forms, setForms] = useState<FormItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,16 +29,45 @@ export default function DashboardPage() {
   const token = useAuthToken();
   const canDelete = canDeleteForm(useAuthUser());
 
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  // Bumped to re-read the totals after a form is deleted or switched off.
+  const [summaryKey, setSummaryKey] = useState(0);
+
+  // Totals come from the server: the list below holds only the pages loaded.
   const stats = useMemo(
     () => ({
-      totalForms: forms.length,
-      totalResponses: forms.reduce((sum, f) => sum + f._count.responses, 0),
-      activeForms: forms.filter((f) => f.isActive).length,
+      totalForms: summary?.forms ?? forms.length,
+      totalResponses:
+        summary?.responses ?? forms.reduce((sum, f) => sum + f._count.responses, 0),
+      activeForms: summary?.activeForms ?? forms.filter((f) => f.isActive).length,
     }),
-    [forms]
+    [forms, summary]
   );
 
   useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+    apiJson<Summary>("/api/forms/summary", { token })
+      .then((data) => {
+        if (!cancelled) setSummary(data);
+      })
+      .catch(() => {
+        // The tiles fall back to counting the loaded forms.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, summaryKey]);
+
+  useEffect(() => {
+    // Ignores a response that arrives after the effect re-ran, so it cannot
+    // overwrite pages loaded since.
+    let cancelled = false;
+
     const fetchForms = async () => {
       if (!token) {
         setLoading(false);
@@ -41,17 +76,10 @@ export default function DashboardPage() {
 
       try {
         setLoading(true);
-        const response = await apiFetch("/api/forms", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body.message || "Failed to load forms");
-        }
-
-        const data = (await response.json()) as FormItem[];
-        setForms(data);
+        const page = await apiJson<FormPage>(`/api/forms?limit=${PAGE_SIZE}`, { token });
+        if (cancelled) return;
+        setForms(page.items);
+        setNextCursor(page.nextCursor);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         setStatus(message);
@@ -61,7 +89,28 @@ export default function DashboardPage() {
     };
 
     fetchForms();
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
+
+  const loadMore = async () => {
+    if (!token || !nextCursor) return;
+
+    setLoadingMore(true);
+    try {
+      const page = await apiJson<FormPage>(
+        `/api/forms?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(nextCursor)}`,
+        { token }
+      );
+      setForms((prev) => [...prev, ...page.items]);
+      setNextCursor(page.nextCursor);
+    } catch (error) {
+      setStatus(errorMessage(error));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this form?")) return;
@@ -79,6 +128,7 @@ export default function DashboardPage() {
       }
 
       setForms((prev) => prev.filter((f) => f.id !== id));
+      setSummaryKey((key) => key + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setStatus(message);
@@ -106,6 +156,7 @@ export default function DashboardPage() {
       setForms((prev) =>
         prev.map((f) => (f.id === id ? { ...f, isActive: !current } : f))
       );
+      setSummaryKey((key) => key + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setStatus(message);
@@ -258,6 +309,18 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+          {nextCursor ? (
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={loadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "Loading…" : "Load more forms"}
+              </button>
+            </div>
+          ) : null}
           </>
         )}
       </div>

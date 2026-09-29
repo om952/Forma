@@ -40,6 +40,10 @@ describe("withOrgScope", () => {
     assert.deepEqual(withOrgScope({}, "org_A"), { where: { orgId: "org_A" } });
   });
 
+  it("scopes a call made with no arguments at all, like count()", () => {
+    assert.deepEqual(withOrgScope(undefined, "org_A"), { where: { orgId: "org_A" } });
+  });
+
   it("merges into an existing where", () => {
     assert.deepEqual(withOrgScope({ where: { id: "f1" } }, "org_A"), {
       where: { id: "f1", orgId: "org_A" },
