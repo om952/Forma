@@ -161,6 +161,7 @@ export default function ResponsesPage() {
             ) : null}
           </div>
           <button
+            data-testid="responses-export"
             onClick={handleExport}
             disabled={isExporting || responses.length === 0}
             className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
@@ -189,7 +190,7 @@ export default function ResponsesPage() {
         ) : (
           <div className="space-y-4">
             {responses.map((resp) => (
-              <div key={resp.id} className="card-elevated">
+              <div key={resp.id} className="card-elevated" data-testid="response-card">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-400">
                     {new Date(resp.submittedAt).toLocaleString()}

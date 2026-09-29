@@ -2,7 +2,11 @@ import type { Request } from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { RedisStore, type RedisReply } from "rate-limit-redis";
 
+import { env } from "../config/env";
 import { redisRequestConnection } from "../queues/redis";
+
+/** Every limit below, times RATE_LIMIT_SCALE (1 unless a test raises it). */
+const scaled = (limit: number) => limit * env.RATE_LIMIT_SCALE;
 
 /**
  * Limiters are backed by Redis rather than the default in-memory store: an
@@ -52,7 +56,7 @@ export const authLimiter = rateLimit({
   ...baseOptions,
   store: createStore("auth"),
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: scaled(10),
   skipSuccessfulRequests: true,
   message: {
     message: "Too many authentication attempts. Try again in a few minutes.",
@@ -69,7 +73,7 @@ export const accountEmailLimiter = rateLimit({
   ...baseOptions,
   store: createStore("account-email"),
   windowMs: 15 * 60 * 1000,
-  limit: 5,
+  limit: scaled(5),
   message: { message: "Too many emails requested. Try again in a few minutes." },
 });
 
@@ -82,7 +86,7 @@ export const inviteLimiter = rateLimit({
   ...baseOptions,
   store: createStore("invite"),
   windowMs: 60 * 60 * 1000,
-  limit: 50,
+  limit: scaled(50),
   keyGenerator: (req: Request) =>
     req.user ? `user:${req.user.id}` : ipKeyGenerator(req.ip ?? "unknown"),
   message: { message: "Too many invitations sent. Try again later." },
@@ -97,7 +101,7 @@ export const submissionLimiter = rateLimit({
   ...baseOptions,
   store: createStore("submit"),
   windowMs: 60 * 1000,
-  limit: 30,
+  limit: scaled(30),
   keyGenerator: (req: Request) =>
     `${ipKeyGenerator(req.ip ?? "unknown")}:${req.params.formId ?? "unknown"}`,
   message: {
@@ -114,7 +118,7 @@ export const trackingLimiter = rateLimit({
   ...baseOptions,
   store: createStore("track"),
   windowMs: 10 * 60 * 1000,
-  limit: 300,
+  limit: scaled(300),
   keyGenerator: (req: Request) =>
     `${ipKeyGenerator(req.ip ?? "unknown")}:${req.params.id ?? "unknown"}`,
   message: { message: "Too many requests for this form. Please slow down." },
@@ -128,7 +132,7 @@ export const uploadLimiter = rateLimit({
   ...baseOptions,
   store: createStore("upload"),
   windowMs: 10 * 60 * 1000,
-  limit: 20,
+  limit: scaled(20),
   message: { message: "Too many uploads from this address. Try again later." },
 });
 
@@ -140,7 +144,7 @@ export const apiLimiter = rateLimit({
   ...baseOptions,
   store: createStore("api"),
   windowMs: 15 * 60 * 1000,
-  limit: 600,
+  limit: scaled(600),
   /**
    * Razorpay's callbacks all originate from a handful of their IPs, so a busy
    * billing period would drain one shared bucket and we would start dropping

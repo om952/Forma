@@ -3,5 +3,5 @@
   // out of `dist` — they are still typechecked by `npm run typecheck`, which
   // uses the base config and does include them.
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/integration/**"]
 }

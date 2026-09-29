@@ -11,7 +11,8 @@
     "dev:worker": "tsx src/worker.ts",
     "migrate:deploy": "prisma migrate deploy",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:integration": "node --import tsx --test --test-concurrency=1 --test-force-exit \"src/**/*.integration.ts\""
   },
   "keywords": [],
   "author": "",

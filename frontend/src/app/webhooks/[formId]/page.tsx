@@ -291,6 +291,7 @@ export default function WebhooksPage() {
                 <input
                   type="url"
                   required
+                  data-testid="webhook-url"
                   placeholder="https://example.com/webhook"
                   className="input mt-2"
                   value={url}
@@ -298,12 +299,12 @@ export default function WebhooksPage() {
                 />
               </div>
             </div>
-            <button type="submit" className="btn-primary">
+            <button type="submit" className="btn-primary" data-testid="webhook-add">
               Add Webhook
             </button>
           </form>
 
-          {status ? <div className="status-info mt-4">{status}</div> : null}
+          {status ? <div className="status-info mt-4" data-testid="webhooks-status">{status}</div> : null}
         </div>
 
         <div className="mt-6 space-y-4">
@@ -313,7 +314,7 @@ export default function WebhooksPage() {
             </div>
           ) : (
             webhooks.map((webhook) => (
-              <div key={webhook.id} className="card transition hover:-translate-y-0.5">
+              <div key={webhook.id} className="card transition hover:-translate-y-0.5" data-testid="webhook-row">
                 <div className="flex items-start justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -373,7 +374,7 @@ export default function WebhooksPage() {
 
             <div className="space-y-4">
               {deadLetters.map((deadLetter) => (
-                <div key={deadLetter.id} className="card border-rose-200">
+                <div key={deadLetter.id} className="card border-rose-200" data-testid="dead-letter-row">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-slate-900">

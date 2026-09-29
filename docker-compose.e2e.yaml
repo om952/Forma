@@ -1,0 +1,24 @@
+# Layered on docker-compose.prod.yaml for the browser tests in e2e/:
+#
+#   docker compose --env-file .env.production \
+#     -f docker-compose.prod.yaml -f docker-compose.e2e.yaml up -d --build --wait
+#
+# Never use this for a real deployment: it publishes Postgres on this machine
+# and multiplies every rate limit.
+
+services:
+  # The suite sets up what a test stack has no UI path for (a Premium plan,
+  # failed webhook deliveries, emailed link tokens) straight in the database.
+  postgres:
+    ports:
+      - "127.0.0.1:${E2E_DB_PORT:-55432}:5432"
+
+  # One machine drives every scenario, so every sign-in, invite and
+  # submission comes from the same address.
+  api:
+    environment:
+      RATE_LIMIT_SCALE: "100"
+
+  worker:
+    environment:
+      RATE_LIMIT_SCALE: "100"

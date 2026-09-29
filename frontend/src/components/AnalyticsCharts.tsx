@@ -55,9 +55,9 @@ const niceMax = (value: number) => {
 
 export function StatTile({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{value}</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5" data-testid="kpi">
+      <p className="text-xs font-medium text-slate-500" data-testid="kpi-label">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900" data-testid="kpi-value">{value}</p>
       {detail ? <p className="mt-1 text-xs text-slate-500">{detail}</p> : null}
     </div>
   );

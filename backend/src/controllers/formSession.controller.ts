@@ -13,6 +13,13 @@ import type { fieldReachedBody } from "../validation/misc";
  * keeps for one fill of the form, and nothing identifying is stored.
  */
 
+/**
+ * The current time as Prisma stores it: UTC, in a column without a time zone.
+ * A bare now() would be converted to the connection's session time zone,
+ * which is only UTC if the database happens to be configured that way.
+ */
+const UTC_NOW = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
+
 /** Records that someone opened the form. Returns the id the page reports progress against. */
 export const startFormSession = async (req: Request, res: Response) => {
   const form = await prisma.form.findUnique({
@@ -58,8 +65,8 @@ export const recordFieldReached = async (req: Request, res: Response) => {
           ELSE array_append("fieldsTouched", ${fieldId}::text)
         END,
         "lastFieldId" = ${fieldId}::text,
-        "startedAt" = COALESCE("startedAt", now()),
-        "lastActiveAt" = now()
+        "startedAt" = COALESCE("startedAt", ${UTC_NOW}),
+        "lastActiveAt" = ${UTC_NOW}
     WHERE id = ${sessionId} AND "formId" = ${formId} AND "submittedAt" IS NULL
   `);
 
@@ -82,10 +89,10 @@ export const completeFormSession = async (
 
   await prisma.$executeRaw(Prisma.sql`
     UPDATE "FormSession"
-    SET "submittedAt" = now(),
+    SET "submittedAt" = ${UTC_NOW},
         "responseId" = ${responseId},
-        "startedAt" = COALESCE("startedAt", now()),
-        "lastActiveAt" = now()
+        "startedAt" = COALESCE("startedAt", ${UTC_NOW}),
+        "lastActiveAt" = ${UTC_NOW}
     WHERE id = ${sessionId} AND "formId" = ${formId} AND "submittedAt" IS NULL
   `);
 };
