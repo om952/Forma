@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import Razorpay from "razorpay";
 
+import { billingConfig } from "../config/env";
 import { prisma } from "../db/prisma";
 
 type CreateOrderBody = {
@@ -13,25 +14,30 @@ const PREMIUM_PLANS = {
   yearly: { amount: 199900, currency: "INR" },
 };
 
-const getRazorpayClient = () => {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-  if (!keyId || !keySecret) {
-    throw new Error("Razorpay credentials are not configured");
-  }
-
-  return new Razorpay({
-    key_id: keyId,
-    key_secret: keySecret,
+/**
+ * Billing is optional configuration — the app runs fine without it, with the
+ * upgrade flow switched off. 503 rather than 500: nothing is broken, the
+ * feature is simply not enabled on this deployment.
+ */
+const billingUnavailable = (res: Response) =>
+  res.status(503).json({
+    message: "Billing is not configured on this deployment.",
+    code: "BILLING_DISABLED",
   });
-};
+
+const getRazorpayClient = (config: NonNullable<typeof billingConfig>) =>
+  new Razorpay({
+    key_id: config.keyId,
+    key_secret: config.keySecret,
+  });
 
 export const createSubscription = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
       return res.status(401).json({ message: "Unauthorized" });
     }
+
+    if (!billingConfig) return billingUnavailable(res);
 
     const plan = (req.body as { plan?: string }).plan;
     const selectedPlan = plan === "yearly" ? "yearly" : "monthly";
@@ -46,7 +52,7 @@ export const createSubscription = async (req: Request, res: Response) => {
     }
 
     let razorpayCustomerId = org.razorpayCustomerId;
-    const razorpay = getRazorpayClient();
+    const razorpay = getRazorpayClient(billingConfig);
 
     if (!razorpayCustomerId) {
       const customer = await razorpay.customers.create({
@@ -105,7 +111,7 @@ export const createSubscription = async (req: Request, res: Response) => {
       subscriptionId: subscription.id,
       amount: planConfig.amount,
       currency: planConfig.currency,
-      keyId: process.env.RAZORPAY_KEY_ID,
+      keyId: billingConfig.keyId,
     });
   } catch (error) {
     const typedError = error as {
@@ -132,6 +138,8 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
+    if (!billingConfig) return billingUnavailable(res);
+
     const { amount, currency } = req.body as CreateOrderBody;
     const orderAmount = Number.isFinite(amount) ? Number(amount) : 19900;
     const orderCurrency = currency ?? "INR";
@@ -140,7 +148,7 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "amount must be greater than 0" });
     }
 
-    const razorpay = getRazorpayClient();
+    const razorpay = getRazorpayClient(billingConfig);
 
     const order = await razorpay.orders.create({
       amount: Math.round(orderAmount),
@@ -156,7 +164,7 @@ export const createOrder = async (req: Request, res: Response) => {
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
-      keyId: process.env.RAZORPAY_KEY_ID,
+      keyId: billingConfig.keyId,
     });
   } catch (error) {
     const typedError = error as {
@@ -179,12 +187,10 @@ export const createOrder = async (req: Request, res: Response) => {
 
 export const handleWebhook = async (req: Request, res: Response) => {
   try {
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-    const signature = req.headers["x-razorpay-signature"];
+    if (!billingConfig) return billingUnavailable(res);
 
-    if (!webhookSecret) {
-      return res.status(500).json({ message: "Webhook secret is not configured" });
-    }
+    const webhookSecret = billingConfig.webhookSecret;
+    const signature = req.headers["x-razorpay-signature"];
 
     if (typeof signature !== "string") {
       return res.status(400).json({ message: "Missing Razorpay signature" });
@@ -299,6 +305,8 @@ export const cancelSubscription = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
+    if (!billingConfig) return billingUnavailable(res);
+
     const org = await prisma.organization.findUnique({
       where: { id: req.user.orgId },
     });
@@ -307,7 +315,7 @@ export const cancelSubscription = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "No active subscription found" });
     }
 
-    const razorpay = getRazorpayClient();
+    const razorpay = getRazorpayClient(billingConfig);
     await razorpay.subscriptions.cancel(org.razorpaySubscriptionId);
 
     await prisma.organization.update({

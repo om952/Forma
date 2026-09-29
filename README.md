@@ -106,11 +106,28 @@ Run migrations:
 npx prisma migrate dev
 ```
 
-Start the backend:
+Start the backend in development (runs TypeScript directly):
 
 ```bash
 npm run dev
 ```
+
+For production, compile first and run the build — `npm start` does not
+transpile:
+
+```bash
+npm run build   # prisma generate + tsc -> dist/
+npm start       # node dist/server.js
+```
+
+Configuration is validated at boot. Missing or invalid variables stop the
+process with a list of exactly what is wrong rather than failing later on the
+first request that needs them. With `NODE_ENV=production`, `JWT_SECRET` must
+also be at least 32 characters and not one of the placeholder values.
+
+The server drains on `SIGTERM`/`SIGINT`: it stops accepting connections, lets
+in-flight requests and queue jobs finish, then closes Redis and the database
+before exiting.
 
 ### 2) Redis (for webhooks)
 

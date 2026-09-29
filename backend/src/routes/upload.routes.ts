@@ -5,6 +5,7 @@ import path from "path";
 import { Router } from "express";
 
 import { prisma } from "../db/prisma";
+import { uploadLimiter } from "../middlewares/rateLimit.middleware";
 
 const router = Router();
 
@@ -24,7 +25,7 @@ const MAX_BYTES = 5 * 1024 * 1024;
  * currently accepting submissions — that keeps it from being general-purpose
  * file hosting while still letting a stranger attach a file to a live form.
  */
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", uploadLimiter, async (req: Request, res: Response) => {
   try {
     const { formId, fileName, fileData, fileType } = req.body as {
       formId?: string;

@@ -1,7 +1,24 @@
 import type { Request, Response } from "express";
 
 import { webhookQueue } from "../queues/webhook.queue";
+import { BlockedUrlError, assertDeliverableUrl } from "../utils/ssrf";
 import { detectPayloadType } from "../utils/webhook.utils";
+
+/**
+ * Validates a destination the tenant supplied, returning the message to show
+ * them if it is not deliverable. Checking at write time gives immediate
+ * feedback; the worker re-checks at delivery time because DNS can change
+ * between the two.
+ */
+const rejectionReasonFor = async (url: string): Promise<string | null> => {
+  try {
+    await assertDeliverableUrl(url);
+    return null;
+  } catch (error) {
+    if (error instanceof BlockedUrlError) return error.message;
+    throw error;
+  }
+};
 
 export const getWebhooks = async (req: Request, res: Response) => {
   try {
@@ -60,8 +77,14 @@ export const createWebhook = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "formId is required" });
     }
 
-    if (!url || typeof url !== "string" || !url.startsWith("http")) {
+    if (!url || typeof url !== "string") {
       return res.status(400).json({ message: "Valid URL is required" });
+    }
+
+    const rejection = await rejectionReasonFor(url);
+
+    if (rejection) {
+      return res.status(400).json({ message: rejection });
     }
 
     const form = await req.db.form.findFirst({
@@ -115,9 +138,16 @@ export const updateWebhook = async (req: Request, res: Response) => {
 
     const data: { url?: string; isActive?: boolean } = {};
     if (url !== undefined) {
-      if (typeof url !== "string" || !url.startsWith("http")) {
+      if (typeof url !== "string") {
         return res.status(400).json({ message: "Valid URL is required" });
       }
+
+      const rejection = await rejectionReasonFor(url);
+
+      if (rejection) {
+        return res.status(400).json({ message: rejection });
+      }
+
       data.url = url;
     }
     if (isActive !== undefined) {

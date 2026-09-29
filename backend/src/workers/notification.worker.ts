@@ -1,6 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { Resend } from "resend";
 
+import { env } from "../config/env";
 import {
   notificationQueue,
   type NotificationJobData,
@@ -12,22 +13,17 @@ import {
   type EmailContent,
 } from "../utils/email.utils";
 
-const resendApiKey = process.env.RESEND_API_KEY;
-const emailFrom = process.env.EMAIL_FROM ?? "Forma <onboarding@resend.dev>";
-const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
+const resendApiKey = env.RESEND_API_KEY;
+const emailFrom = env.EMAIL_FROM;
+const frontendUrl = env.FRONTEND_URL;
 
 /**
  * Email is optional configuration. Without a key the worker still drains the
  * queue and marks jobs complete — otherwise every submission would pile up
  * three failing jobs and noise up the logs.
  */
+// The "not configured" warning is reported once at boot by `configWarnings`.
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
-
-if (!resend) {
-  console.warn(
-    "[notifications] RESEND_API_KEY is not set — submission emails will be skipped."
-  );
-}
 
 export const notificationWorker = new Worker<NotificationJobData>(
   notificationQueue.name,

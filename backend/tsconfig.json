@@ -2,23 +2,24 @@
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
     // File Layout
-    // "rootDir": "./src",
-    // "outDir": "./dist",
+    // `rootDir: ./src` keeps the emit flat — src/server.ts becomes
+    // dist/server.js, so `__dirname/../uploads` still resolves to backend/uploads
+    // whether the app is run from source or from the build.
+    "rootDir": "./src",
+    "outDir": "./dist",
 
     // Environment Settings
     // See also https://aka.ms/tsconfig/module
     "module": "nodenext",
     "target": "esnext",
-    "types": [],
-    // For nodejs:
-    // "lib": ["esnext"],
-    // "types": ["node"],
-    // and npm install -D @types/node
+    "types": ["node"],
 
     // Other Outputs
     "sourceMap": true,
-    "declaration": true,
-    "declarationMap": true,
+    // This is an application, not a published library: nothing consumes .d.ts
+    // files from it, and emitting them only slows the build down.
+    "declaration": false,
+    "declarationMap": false,
 
     // Stricter Typechecking Options
     "noUncheckedIndexedAccess": true,
@@ -40,5 +41,10 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-  }
+  },
+  // Only application sources. `prisma.config.ts` sits outside `rootDir` and is
+  // consumed by the Prisma CLI rather than compiled into the app, so it is not
+  // part of this program.
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

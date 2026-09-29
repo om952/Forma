@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import * as jwt from "jsonwebtoken";
 
+import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import {
   createScopedPrismaClient,
@@ -48,14 +49,9 @@ export const authMiddleware = async (
   }
 
   const token = authHeader.slice("Bearer ".length).trim();
-  const jwtSecret = process.env.JWT_SECRET;
-
-  if (!jwtSecret) {
-    return res.status(500).json({ message: "JWT secret is not configured" });
-  }
 
   try {
-    const decoded = jwt.verify(token, jwtSecret) as AuthPayload;
+    const decoded = jwt.verify(token, env.JWT_SECRET) as AuthPayload;
 
     if (!decoded?.userId || !decoded?.orgId || !decoded?.role) {
       return res.status(401).json({ message: "Invalid token" });

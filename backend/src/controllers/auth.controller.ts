@@ -2,10 +2,11 @@ import * as bcrypt from "bcrypt";
 import type { Request, Response } from "express";
 import * as jwt from "jsonwebtoken";
 
+import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 
-const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS ?? 12);
-const JWT_SECRET = process.env.JWT_SECRET;
+const SALT_ROUNDS = env.BCRYPT_SALT_ROUNDS;
+const JWT_SECRET = env.JWT_SECRET;
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const toSlug = (value: string) =>
@@ -15,13 +16,10 @@ const toSlug = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "");
 
-const signToken = (payload: { userId: string; orgId: string; role: string }) => {
-  if (!JWT_SECRET) {
-    throw new Error("JWT_SECRET is not set");
-  }
-
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
-};
+// `JWT_SECRET` is guaranteed present and non-placeholder by config validation
+// at boot, so there is nothing left to check here.
+const signToken = (payload: { userId: string; orgId: string; role: string }) =>
+  jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
 
 type SignupBody = {
   email?: string;

@@ -1,5 +1,12 @@
 node_modules
+# Compiled output from `npm run build`
+dist
 # Keep environment variables out of version control
 .env
 
 /generated/prisma
+
+# Respondent uploads are runtime data, not source. Track the directory so it
+# exists on a fresh clone, never its contents.
+uploads/*
+!uploads/.gitkeep
