@@ -2,14 +2,12 @@ import type { Request, Response } from "express";
 import { randomUUID } from "crypto";
 import path from "path";
 
-import { Router } from "express";
-
 import { prisma } from "../db/prisma";
 import { uploadLimiter } from "../middlewares/rateLimit.middleware";
 import { buildFileKey, fileUrlFor, storage } from "../storage";
 import { detectAllowedFile } from "../utils/fileType";
-
-const router = Router();
+import { uploadBody } from "../validation/misc";
+import { route, type RouteSpec } from "./define";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -21,7 +19,7 @@ const MAX_BYTES = 5 * 1024 * 1024;
  * currently accepting submissions — that keeps it from being general-purpose
  * file hosting while still letting a stranger attach a file to a live form.
  */
-router.post("/", uploadLimiter, async (req: Request, res: Response) => {
+const uploadFile = async (req: Request, res: Response) => {
   try {
     // `fileType` may still be sent by older clients; it is never trusted.
     const { formId, fileName, fileData } = req.body as {
@@ -94,6 +92,25 @@ router.post("/", uploadLimiter, async (req: Request, res: Response) => {
     req.log.error({ err: error }, "Upload failed");
     return res.status(500).json({ message: "Internal server error" });
   }
-});
+};
 
-export default router;
+export const uploadRoutes: RouteSpec[] = [
+  route({
+    method: "post",
+    path: "/",
+    summary: "Upload a file for a form field",
+    description:
+      "Anonymous, for respondents: the form must exist and be accepting submissions. The file arrives base64-encoded in JSON; its type is read from its bytes, and only images, PDFs, Word and Excel documents and .txt/.csv files are accepted. Returns the link to submit as the field's answer.",
+    access: "public",
+    middleware: [uploadLimiter],
+    request: { body: uploadBody },
+    responses: {
+      200: "`{ fileUrl, fileName, fileType, size }`.",
+      400: "Larger than 5MB.",
+      404: "No such form, or it is not accepting submissions.",
+      415: "Not an accepted file type.",
+      429: "Too many uploads from this address.",
+    },
+    handler: uploadFile,
+  }),
+];

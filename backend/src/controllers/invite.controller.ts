@@ -1,13 +1,14 @@
 import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import type { Request, Response } from "express";
+import type { z } from "zod";
 
 import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import { signSessionToken, toPublicUser } from "../services/session";
-import { passwordProblem } from "../utils/accountInput";
 import { HttpError } from "../utils/httpError";
 import { hashToken, isWellFormedToken } from "../utils/tokens";
+import type { acceptInviteBody, inviteLookupBody } from "../validation/account";
 
 /**
  * The invitee's side: no session, just the token from the invite link. Both
@@ -43,7 +44,8 @@ const alreadyMember = (email: string, orgName: string) =>
 
 /** What the accept page shows before the invitee sets a password. */
 export const lookupInvite = async (req: Request, res: Response) => {
-  const invite = await findOpenInvite((req.body as { token?: unknown }).token);
+  const { token } = req.body as z.output<typeof inviteLookupBody>;
+  const invite = await findOpenInvite(token);
 
   if (!invite) throw new HttpError(404, INVALID_INVITE);
 
@@ -69,22 +71,13 @@ export const lookupInvite = async (req: Request, res: Response) => {
  * password (and optionally a name).
  */
 export const acceptInvite = async (req: Request, res: Response) => {
-  const { token, password, name } = req.body as {
-    token?: unknown;
-    password?: unknown;
-    name?: unknown;
-  };
-
-  const invalidPassword = passwordProblem(password);
-  if (invalidPassword) throw new HttpError(400, invalidPassword);
-
-  const displayName =
-    typeof name === "string" && name.trim() ? name.trim().slice(0, 100) : null;
+  const { token, password, name: displayName } =
+    req.body as z.output<typeof acceptInviteBody>;
 
   const invite = await findOpenInvite(token);
   if (!invite) throw new HttpError(404, INVALID_INVITE);
 
-  const passwordHash = await bcrypt.hash(password as string, env.BCRYPT_SALT_ROUNDS);
+  const passwordHash = await bcrypt.hash(password, env.BCRYPT_SALT_ROUNDS);
   const now = new Date();
 
   try {

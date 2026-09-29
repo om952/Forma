@@ -1,9 +1,8 @@
 import type { Request, Response } from "express";
-import { Router } from "express";
 
 import { isValidFileKey, storage } from "../storage";
-
-const router = Router();
+import { fileParams } from "../validation/misc";
+import { route, type RouteSpec } from "./define";
 
 /**
  * Serves an uploaded file as a download.
@@ -13,7 +12,7 @@ const router = Router();
  * is the credential — the same model as before, now independent of where the
  * bytes are stored.
  */
-router.get("/forms/:formId/:fileName", async (req: Request, res: Response) => {
+const serveFile = async (req: Request, res: Response) => {
   const { formId, fileName } = req.params as { formId: string; fileName: string };
   const key = `forms/${formId}/${fileName}`;
 
@@ -39,6 +38,18 @@ router.get("/forms/:formId/:fileName", async (req: Request, res: Response) => {
       return res.status(500).json({ message: "Internal server error" });
     }
   }
-});
+};
 
-export default router;
+export const filesRoutes: RouteSpec[] = [
+  route({
+    method: "get",
+    path: "/forms/:formId/:fileName",
+    summary: "Download an uploaded file",
+    description:
+      "Unauthenticated: these links go to Slack, Zapier and email. The name carries a random UUID, so the link is the credential. Always served as a download.",
+    access: "public",
+    request: { params: fileParams },
+    responses: { 200: "The file, as an attachment.", 404: "No such file." },
+    handler: serveFile,
+  }),
+];

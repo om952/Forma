@@ -46,6 +46,7 @@ model Organization {
   webhookDeadLetters WebhookDeadLetter[]
   billingEvents      BillingEvent[]
   invites            Invite[]
+  formSessions       FormSession[]
 }
 
 model User {
@@ -89,6 +90,7 @@ model Form {
   webhooks           Webhook[]
   responses          Response[]
   webhookDeadLetters WebhookDeadLetter[]
+  sessions           FormSession[]
 
   @@index([orgId])
   @@index([createdById])
@@ -121,10 +123,12 @@ model Response {
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   form         Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  session      FormSession?
 
   @@index([orgId])
   @@index([formId])
   @@index([orgId, submittedAt])
+  @@index([formId, submittedAt])
 }
 
 model WebhookDeadLetter {
@@ -202,4 +206,31 @@ model Invite {
   invitedBy    User?        @relation("InvitesSent", fields: [invitedById], references: [id], onDelete: SetNull)
 
   @@index([orgId, email])
+}
+
+/// One respondent's visit to a public form, from opening it to submitting or
+/// leaving. Powers the start/completion funnel and true per-field drop-off:
+/// where people who started the form stopped. Holds no IP address, user agent
+/// or answers.
+model FormSession {
+  id            String    @id @default(cuid())
+  orgId         String
+  formId        String
+  viewedAt      DateTime  @default(now())
+  // First interaction with any field.
+  startedAt     DateTime?
+  lastActiveAt  DateTime  @default(now())
+  // Field ids the respondent reached, in the order they first reached them.
+  fieldsTouched String[]  @default([])
+  // The most recent field reached; for an abandoned visit, where they stopped.
+  lastFieldId   String?
+  submittedAt   DateTime?
+  responseId    String?   @unique
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  form         Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  response     Response?    @relation(fields: [responseId], references: [id], onDelete: SetNull)
+
+  @@index([formId, viewedAt])
+  @@index([orgId])
 }

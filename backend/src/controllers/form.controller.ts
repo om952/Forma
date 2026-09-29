@@ -1,148 +1,107 @@
+import type { Prisma } from "@prisma/client";
 import type { Request, Response } from "express";
+import type { z } from "zod";
 
 import { prisma } from "../db/prisma";
+import { HttpError } from "../utils/httpError";
+import { pageArgs, pageOf } from "../utils/pagination";
+import type { Pagination } from "../validation/common";
+import type { createFormBody, updateFormBody } from "../validation/forms";
 
-type CreateFormBody = {
-  title?: string;
-  schema?: unknown;
-  thankYouMessage?: string;
-};
+/*
+ * Inputs arrive already validated and parsed by the route declarations in
+ * routes/form.routes.ts, so handlers read them with a plain type assertion.
+ */
 
-const normalizeThankYou = (value: unknown): string | null => {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-};
-
-const isSchemaArray = (value: unknown): value is Array<Record<string, unknown>> =>
-  Array.isArray(value);
+const FREE_FORM_LIMIT = 3;
 
 export const createForm = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !req.db) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+  const { title, schema, thankYouMessage } = req.body as z.output<typeof createFormBody>;
 
-    const { title, schema, thankYouMessage } = req.body as CreateFormBody;
+  const [organization, formCount] = await req.db!.$transaction([
+    req.db!.organization.findUnique({
+      where: { id: req.user!.orgId },
+      select: { tier: true },
+    }),
+    req.db!.form.count({}),
+  ]);
 
-    if (!title || !schema) {
-      return res.status(400).json({ message: "title and schema are required" });
-    }
+  if (!organization) throw new HttpError(404, "Organization not found");
 
-    if (!isSchemaArray(schema)) {
-      return res.status(400).json({ message: "schema must be an array" });
-    }
-
-    const [organization, formCount] = await req.db.$transaction([
-      req.db.organization.findUnique({
-        where: { id: req.user.orgId },
-        select: { tier: true },
-      }),
-      req.db.form.count({
-        where: { orgId: req.user.orgId },
-      }),
-    ]);
-
-    if (!organization) {
-      return res.status(404).json({ message: "Organization not found" });
-    }
-
-    if (organization.tier === "FREE" && formCount >= 3) {
-      return res.status(403).json({
-        message: "Free tier allows up to 3 forms. Upgrade to create more.",
-      });
-    }
-
-    const form = await req.db.form.create({
-      data: {
-        name: String(title),
-        schema: schema as any,
-        thankYouMessage: normalizeThankYou(thankYouMessage),
-        orgId: req.user.orgId,
-        createdById: req.user.id,
-      },
-    });
-
-    return res.status(201).json({
-      id: form.id,
-      name: form.name,
-      orgId: form.orgId,
-      createdAt: form.createdAt,
-    });
-  } catch (error) {
-    req.log.error({ err: error }, "createForm failed");
-    return res.status(500).json({ message: "Internal server error" });
+  if (organization.tier === "FREE" && formCount >= FREE_FORM_LIMIT) {
+    throw new HttpError(
+      403,
+      `Free tier allows up to ${FREE_FORM_LIMIT} forms. Upgrade to create more.`
+    );
   }
+
+  const form = await req.db!.form.create({
+    data: {
+      name: title,
+      schema: schema as Prisma.InputJsonValue,
+      thankYouMessage,
+      orgId: req.user!.orgId,
+      createdById: req.user!.id,
+    },
+  });
+
+  return res.status(201).json({
+    id: form.id,
+    name: form.name,
+    orgId: form.orgId,
+    createdAt: form.createdAt,
+  });
 };
 
+/** The organization's forms, newest first, a page at a time. */
 export const getForms = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !req.db) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+  const page = req.query as unknown as Pagination;
 
-    const forms = await req.db.form.findMany({
-      where: { orgId: req.user.orgId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: { responses: true },
-        },
-      },
-    });
+  const forms = await req.db!.form.findMany({
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...pageArgs(page),
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { responses: true } },
+    },
+  });
 
-    return res.json(forms);
-  } catch (error) {
-    req.log.error({ err: error }, "getForms failed");
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  return res.json(pageOf(forms, page.limit));
+};
+
+/** Totals for the dashboard, independent of which page of forms is loaded. */
+export const getFormsSummary = async (req: Request, res: Response) => {
+  const [forms, activeForms, responses] = await Promise.all([
+    req.db!.form.count({}),
+    req.db!.form.count({ where: { isActive: true } }),
+    req.db!.response.count({}),
+  ]);
+
+  return res.json({ forms, activeForms, responses });
 };
 
 export const getFormById = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !req.db) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+  const form = await req.db!.form.findFirst({
+    where: { id: (req.params as { id: string }).id },
+    select: {
+      id: true,
+      name: true,
+      schema: true,
+      thankYouMessage: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { responses: true } },
+    },
+  });
 
-    const { id } = req.params as { id: string };
+  if (!form) throw new HttpError(404, "Form not found");
 
-    if (!id || typeof id !== "string") {
-      return res.status(400).json({ message: "id is required" });
-    }
-
-    const form = await req.db.form.findFirst({
-      where: {
-        id: id,
-        orgId: req.user.orgId,
-      },
-      select: {
-        id: true,
-        name: true,
-        schema: true,
-        thankYouMessage: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: { responses: true },
-        },
-      },
-    });
-
-    if (!form) {
-      return res.status(404).json({ message: "Form not found" });
-    }
-
-    return res.json(form);
-  } catch (error) {
-    req.log.error({ err: error }, "getFormById failed");
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  return res.json(form);
 };
 
 /**
@@ -152,118 +111,68 @@ export const getFormById = async (req: Request, res: Response) => {
  * respondent needs to render and submit the form.
  */
 export const getPublicForm = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params as { id: string };
+  const form = await prisma.form.findUnique({
+    where: { id: (req.params as { id: string }).id },
+    select: {
+      id: true,
+      name: true,
+      schema: true,
+      thankYouMessage: true,
+      isActive: true,
+    },
+  });
 
-    if (!id || typeof id !== "string") {
-      return res.status(400).json({ message: "id is required" });
-    }
+  if (!form) throw new HttpError(404, "Form not found");
 
-    const form = await prisma.form.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        schema: true,
-        thankYouMessage: true,
-        isActive: true,
-      },
-    });
-
-    if (!form) {
-      return res.status(404).json({ message: "Form not found" });
-    }
-
-    if (!form.isActive) {
-      return res
-        .status(403)
-        .json({ message: "This form is not accepting submissions" });
-    }
-
-    return res.json(form);
-  } catch (error) {
-    req.log.error({ err: error }, "getPublicForm failed");
-    return res.status(500).json({ message: "Internal server error" });
+  if (!form.isActive) {
+    throw new HttpError(403, "This form is not accepting submissions");
   }
+
+  return res.json(form);
 };
 
 export const updateForm = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !req.db) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+  const { title, schema, isActive, thankYouMessage } =
+    req.body as z.output<typeof updateFormBody>;
 
-    const { id } = req.params as { id: string };
-    const { title, schema, isActive, thankYouMessage } = req.body;
+  const existing = await req.db!.form.findFirst({
+    where: { id: (req.params as { id: string }).id },
+    select: { id: true },
+  });
 
-    if (!id || typeof id !== "string") {
-      return res.status(400).json({ message: "id is required" });
-    }
+  if (!existing) throw new HttpError(404, "Form not found");
 
-    const existing = await req.db.form.findFirst({
-      where: { id: id, orgId: req.user.orgId },
-      select: { id: true },
-    });
+  const form = await req.db!.form.update({
+    where: { id: existing.id },
+    data: {
+      ...(title !== undefined ? { name: title } : {}),
+      ...(schema !== undefined ? { schema: schema as Prisma.InputJsonValue } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+      ...(thankYouMessage !== undefined ? { thankYouMessage } : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      schema: true,
+      thankYouMessage: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 
-    if (!existing) {
-      return res.status(404).json({ message: "Form not found" });
-    }
-
-    const data: Record<string, unknown> = {};
-    if (title !== undefined) data.name = String(title);
-    if (schema !== undefined) data.schema = schema;
-    if (isActive !== undefined) data.isActive = Boolean(isActive);
-    if (thankYouMessage !== undefined) {
-      data.thankYouMessage = normalizeThankYou(thankYouMessage);
-    }
-
-    const form = await req.db.form.update({
-      where: { id: id },
-      data,
-      select: {
-        id: true,
-        name: true,
-        schema: true,
-        thankYouMessage: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    return res.json(form);
-  } catch (error) {
-    req.log.error({ err: error }, "updateForm failed");
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  return res.json(form);
 };
 
 export const deleteForm = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !req.db) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+  const existing = await req.db!.form.findFirst({
+    where: { id: (req.params as { id: string }).id },
+    select: { id: true },
+  });
 
-    const { id } = req.params as { id: string };
+  if (!existing) throw new HttpError(404, "Form not found");
 
-    if (!id || typeof id !== "string") {
-      return res.status(400).json({ message: "id is required" });
-    }
+  await req.db!.form.delete({ where: { id: existing.id } });
 
-    const existing = await req.db.form.findFirst({
-      where: { id: id, orgId: req.user.orgId },
-      select: { id: true },
-    });
-
-    if (!existing) {
-      return res.status(404).json({ message: "Form not found" });
-    }
-
-    await req.db.form.delete({ where: { id: id } });
-
-    return res.json({ message: "Form deleted" });
-  } catch (error) {
-    req.log.error({ err: error }, "deleteForm failed");
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  return res.json({ message: "Form deleted" });
 };

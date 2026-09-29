@@ -22,6 +22,7 @@ export const TENANT_MODELS = new Set([
   "WebhookDeadLetter",
   "BillingEvent",
   "Invite",
+  "FormSession",
 ]);
 
 /**
@@ -53,6 +54,6 @@ export const shouldScope = (
  * last so a caller can never widen the tenant boundary by passing their own.
  */
 export const withOrgScope = <T extends { where?: Record<string, unknown> }>(
-  args: T,
+  args: T | undefined,
   orgId: string
-): T => ({ ...args, where: { ...(args.where ?? {}), orgId } });
+): T => ({ ...args, where: { ...(args?.where ?? {}), orgId } }) as unknown as T;

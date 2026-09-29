@@ -8,11 +8,12 @@ export const apiFetch = (path: string, init?: RequestInit) => {
   return fetch(`${base}${path}`, init);
 };
 
-/** A failed API call, carrying the server's message and status. */
+/** A failed API call, carrying the server's message, status and machine-readable code. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
-    message: string
+    message: string,
+    readonly code?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -38,10 +39,14 @@ export const apiJson = async <T = unknown>(
   });
 
   if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as { message?: string };
+    const data = (await response.json().catch(() => ({}))) as {
+      message?: string;
+      code?: string;
+    };
     throw new ApiError(
       response.status,
-      data.message || `Request failed (${response.status})`
+      data.message || `Request failed (${response.status})`,
+      data.code
     );
   }
 

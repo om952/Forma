@@ -106,6 +106,21 @@ export const submissionLimiter = rateLimit({
 });
 
 /**
+ * Visit tracking from the public form page: one request when the form opens
+ * and one per field reached. Keyed by form, like submissions, and generous
+ * enough for a long form filled more than once.
+ */
+export const trackingLimiter = rateLimit({
+  ...baseOptions,
+  store: createStore("track"),
+  windowMs: 10 * 60 * 1000,
+  limit: 300,
+  keyGenerator: (req: Request) =>
+    `${ipKeyGenerator(req.ip ?? "unknown")}:${req.params.id ?? "unknown"}`,
+  message: { message: "Too many requests for this form. Please slow down." },
+});
+
+/**
  * Anonymous uploads. Each one costs disk, so this is stricter than submission:
  * without it a stranger can fill the volume from a single laptop.
  */

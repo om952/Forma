@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../../../lib/api";
 import { isFieldVisible, type FormField } from "../../../stores/formBuilderStore";
@@ -20,6 +20,57 @@ type FileMap = Record<string, File>;
 // the file picker only — the server checks the file's bytes regardless.
 const UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.xlsx,.txt,.csv";
 
+/*
+ * Visit tracking for the form owner's analytics: when the form was opened,
+ * which fields the respondent reached, and whether they submitted. Anonymous
+ * (a random visit id, nothing else), and never allowed to get in the way of
+ * filling in the form: every failure is ignored.
+ */
+
+const visitKey = (formId: string) => `forma:visit:${formId}`;
+
+/** One visit per fill; React runs effects twice in development. */
+const visits = new Map<string, Promise<string | null>>();
+
+const startVisit = (formId: string): Promise<string | null> => {
+  let visit = visits.get(formId);
+  if (!visit) {
+    visit = (async () => {
+      // A reload carries on the same visit rather than counting a new one.
+      try {
+        const stored = window.sessionStorage.getItem(visitKey(formId));
+        if (stored) return stored;
+      } catch {
+        // Storage can be unavailable (private mode); a visit per load is fine.
+      }
+
+      const response = await apiFetch(`/api/forms/${formId}/sessions`, {
+        method: "POST",
+      }).catch(() => null);
+      if (!response?.ok) return null;
+
+      const { sessionId } = (await response.json()) as { sessionId: string };
+      try {
+        window.sessionStorage.setItem(visitKey(formId), sessionId);
+      } catch {
+        // See above.
+      }
+      return sessionId;
+    })().catch(() => null);
+    visits.set(formId, visit);
+  }
+  return visit;
+};
+
+const endVisit = (formId: string) => {
+  visits.delete(formId);
+  try {
+    window.sessionStorage.removeItem(visitKey(formId));
+  } catch {
+    // See startVisit.
+  }
+};
+
 export default function PublicFormPage() {
   const params = useParams<{ formId?: string }>();
   const formId = typeof params.formId === "string" ? params.formId : "";
@@ -29,6 +80,8 @@ export default function PublicFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<FileMap>({});
+  // Fields already reported for this visit.
+  const reachedFields = useRef(new Set<string>());
 
   useEffect(() => {
     const fetchForm = async () => {
@@ -46,6 +99,7 @@ export default function PublicFormPage() {
         }
         const data = (await response.json()) as FormResponse;
         setForm(data);
+        void startVisit(formId);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         setStatus(message);
@@ -56,6 +110,20 @@ export default function PublicFormPage() {
 
     fetchForm();
   }, [formId]);
+
+  const reportFieldReached = (fieldId: string) => {
+    if (reachedFields.current.has(fieldId)) return;
+    reachedFields.current.add(fieldId);
+
+    void startVisit(formId).then((sessionId) => {
+      if (!sessionId) return;
+      return apiFetch(`/api/forms/${formId}/sessions/${sessionId}/fields`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fieldId }),
+      }).catch(() => undefined);
+    });
+  };
 
   // Returns the stored file's URL, or throws with a message the respondent can
   // act on (e.g. the server refusing the file type).
@@ -104,9 +172,13 @@ export default function PublicFormPage() {
         payload[fieldId] = await uploadFile(file);
       }
 
+      const sessionId = await startVisit(formId);
       const response = await apiFetch(`/api/responses/${formId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(sessionId ? { "X-Form-Session": sessionId } : {}),
+        },
         body: JSON.stringify(payload),
       });
 
@@ -115,6 +187,7 @@ export default function PublicFormPage() {
         throw new Error(body.message || "Submission failed");
       }
 
+      endVisit(formId);
       setSubmitted(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -174,7 +247,13 @@ export default function PublicFormPage() {
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             {visibleFields.map((field) => (
-              <div key={field.id}>
+              <div
+                key={field.id}
+                // Focus covers typing and tabbing; change covers inputs that can
+                // be set without taking focus. Each field is reported once.
+                onFocusCapture={() => reportFieldReached(field.id)}
+                onChangeCapture={() => reportFieldReached(field.id)}
+              >
                 <label className="label mb-2 block">
                   {field.label}
                   {field.required ? " *" : ""}
