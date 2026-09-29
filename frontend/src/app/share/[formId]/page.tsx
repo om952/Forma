@@ -8,7 +8,8 @@ import QRCode from "qrcode";
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
 import { apiFetch } from "../../../lib/api";
-import { getAuthToken } from "../../../lib/auth";
+import { useAuthToken } from "../../../lib/auth";
+import { useBrowserValue } from "../../../lib/useBrowserValue";
 
 type FormSummary = {
   name: string;
@@ -19,20 +20,14 @@ export default function SharePage() {
   const params = useParams<{ formId?: string }>();
   const formId = typeof params.formId === "string" ? params.formId : "";
   const [form, setForm] = useState<FormSummary | null>(null);
-  const [publicUrl, setPublicUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [copied, setCopied] = useState<"link" | "embed" | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    setToken(getAuthToken());
-    // origin is only available in the browser, so build the URL after mount.
-    if (formId) {
-      setPublicUrl(`${window.location.origin}/form/${formId}`);
-    }
-  }, [formId]);
+  const token = useAuthToken();
+  // The origin only exists in the browser; empty until hydration completes.
+  const origin = useBrowserValue(() => window.location.origin, "");
+  const publicUrl = origin && formId ? `${origin}/form/${formId}` : "";
 
   useEffect(() => {
     const fetchForm = async () => {

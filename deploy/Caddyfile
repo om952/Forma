@@ -1,0 +1,19 @@
+# One origin for the whole app: the API under /api, the frontend for the rest.
+# Same-origin means no CORS preflights and lets the browser treat the API as
+# first-party.
+#
+# SITE_ADDRESS=":80" serves plain HTTP (local, or behind another TLS proxy).
+# Set it to a domain, e.g. "forms.example.com", and Caddy obtains and renews a
+# TLS certificate for it automatically.
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	@api path /api/* /health /health/* /uploads/*
+	handle @api {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

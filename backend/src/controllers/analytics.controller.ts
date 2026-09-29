@@ -135,7 +135,7 @@ export const getFormAnalytics = async (req: Request, res: Response) => {
       series,
     });
   } catch (error) {
-    console.error("getFormAnalytics failed", error);
+    req.log.error({ err: error }, "getFormAnalytics failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };

@@ -1,6 +1,7 @@
 import IORedis from "ioredis";
 
 import { env } from "../config/env";
+import { logger } from "../observability/logger";
 
 const redisUrl = env.REDIS_URL;
 
@@ -44,9 +45,9 @@ redisRequestConnection.on("error", (error: Error) => {
   if (requestRedisErrorLogged) return;
 
   requestRedisErrorLogged = true;
-  console.error(
-    "[rate-limit] Redis unavailable — limits are not being enforced:",
-    error.message
+  logger.error(
+    { reason: error.message },
+    "Redis unavailable — rate limits are not being enforced"
   );
 });
 

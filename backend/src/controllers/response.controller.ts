@@ -54,7 +54,7 @@ export const getFormResponses = async (req: Request, res: Response) => {
 
     return res.json(responses);
   } catch (error) {
-    console.error("getFormResponses failed", error);
+    req.log.error({ err: error }, "getFormResponses failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -127,7 +127,7 @@ export const exportResponsesCsv = async (req: Request, res: Response) => {
     // Leading BOM so Excel reads the file as UTF-8.
     return res.send(`﻿${csv}`);
   } catch (error) {
-    console.error("exportResponsesCsv failed", error);
+    req.log.error({ err: error }, "exportResponsesCsv failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -262,7 +262,7 @@ export const submitForm = async (req: Request, res: Response) => {
         });
       }
     } catch (error) {
-      console.error("Failed to queue submission notifications", error);
+      req.log.error({ err: error }, "Failed to queue submission notifications");
     }
 
     return res.status(201).json({
@@ -272,7 +272,7 @@ export const submitForm = async (req: Request, res: Response) => {
       queuedWebhooks: webhooks.length,
     });
   } catch (error) {
-    console.error("submitForm failed", error);
+    req.log.error({ err: error }, "submitForm failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  buildEmailVerificationEmail,
+  buildInviteEmail,
   buildOwnerNotificationEmail,
+  buildPasswordResetEmail,
   buildRespondentConfirmationEmail,
   escapeHtml,
 } from "./email.utils";
@@ -77,5 +80,45 @@ describe("buildRespondentConfirmationEmail", () => {
     });
     assert.match(email.subject, /Survey/);
     assert.ok(!email.html.includes("<b>2026</b>"));
+  });
+});
+
+describe("account emails", () => {
+  const url = "https://forms.example.com/invite#abc";
+
+  it("names the organization, inviter and role in an invite", () => {
+    const email = buildInviteEmail({
+      orgName: "Acme",
+      inviterEmail: "ada@acme.test",
+      role: "ADMIN",
+      url,
+    });
+    assert.match(email.subject, /Acme/);
+    assert.match(email.html, /ada@acme\.test/);
+    assert.match(email.text, /as an admin/);
+    assert.ok(email.text.includes(url));
+  });
+
+  it("escapes a hostile organization name in an invite", () => {
+    const email = buildInviteEmail({
+      orgName: `<img src=x onerror="alert(1)">`,
+      inviterEmail: null,
+      role: "MEMBER",
+      url,
+    });
+    assert.ok(!email.html.includes("<img"));
+    assert.match(email.html, /&lt;img/);
+  });
+
+  it("includes the reset link and its expiry", () => {
+    const email = buildPasswordResetEmail({ orgName: "Acme", url });
+    assert.ok(email.text.includes(url));
+    assert.match(email.text, /1 hour/);
+  });
+
+  it("includes the verification link", () => {
+    const email = buildEmailVerificationEmail({ url });
+    assert.ok(email.html.includes(url));
+    assert.ok(email.text.includes(url));
   });
 });

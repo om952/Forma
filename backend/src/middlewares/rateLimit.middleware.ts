@@ -60,6 +60,35 @@ export const authLimiter = rateLimit({
 });
 
 /**
+ * Endpoints that email someone on request: "forgot password" and "resend
+ * verification". Every request counts, successful or not, since each one can
+ * put a message in a stranger's inbox. Each user also has a one-minute
+ * cooldown per email kind (see `services/accountTokens.ts`).
+ */
+export const accountEmailLimiter = rateLimit({
+  ...baseOptions,
+  store: createStore("account-email"),
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  message: { message: "Too many emails requested. Try again in a few minutes." },
+});
+
+/**
+ * Sending invites. Keyed by the signed-in user rather than the IP, so one
+ * admin inviting their whole team from an office network does not lock out
+ * their colleagues. Must run after `authMiddleware`.
+ */
+export const inviteLimiter = rateLimit({
+  ...baseOptions,
+  store: createStore("invite"),
+  windowMs: 60 * 60 * 1000,
+  limit: 50,
+  keyGenerator: (req: Request) =>
+    req.user ? `user:${req.user.id}` : ipKeyGenerator(req.ip ?? "unknown"),
+  message: { message: "Too many invitations sent. Try again later." },
+});
+
+/**
  * Public form submissions. Keyed by form as well as by IP: a burst against one
  * busy form should not lock a respondent out of every other form on the
  * platform.

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiFetch } from "../../lib/api";
-import { setAuthToken, setAuthUser } from "../../lib/auth";
+import { setAuthToken, setAuthUser, type AuthUser } from "../../lib/auth";
 
 type AuthMode = "signup" | "login";
 
@@ -63,7 +63,7 @@ export default function AuthPage() {
 
       setAuthToken(data.token);
       if (data.user) {
-        setAuthUser(data.user as any);
+        setAuthUser(data.user as AuthUser);
       }
       setStatus("Authenticated. Redirecting to builder...");
       router.push("/builder");
@@ -191,6 +191,15 @@ export default function AuthPage() {
               required
             />
           </label>
+
+          {mode === "login" ? (
+            <Link
+              href="/forgot-password"
+              className="-mt-3 inline-block text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+            >
+              Forgot password?
+            </Link>
+          ) : null}
 
           <label className="label block">
             Organization name

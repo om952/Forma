@@ -1,26 +1,42 @@
 // Must come first: it loads `.env` and validates it, so every module imported
 // below sees a populated, checked environment (or the process has already died
 // with a readable report).
-import { configWarnings, corsOrigins, env, trustProxy } from "./config/env";
+import {
+  configWarnings,
+  corsOrigins,
+  env,
+  runWorkersInApi,
+  trustProxy,
+} from "./config/env";
+// Second: error reporting has to be live before anything else can fail.
+import "./observability/sentry";
 
 import path from "path";
 
 import cors from "cors";
-import express from "express";
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import helmet from "helmet";
-import morgan from "morgan";
 
 import { apiLimiter } from "./middlewares/rateLimit.middleware";
+import { httpLogger, logger } from "./observability/logger";
 import { registerGracefulShutdown } from "./shutdown";
 import authRoutes from "./routes/auth.routes";
 import analyticsRoutes from "./routes/analytics.routes";
+import filesRoutes from "./routes/files.routes";
 import formRoutes from "./routes/form.routes";
+import inviteRoutes from "./routes/invite.routes";
+import orgRoutes from "./routes/org.routes";
+import healthRoutes from "./routes/health.routes";
 import paymentRoutes from "./routes/payment.routes";
 import responseRoutes from "./routes/response.routes";
 import uploadRoutes from "./routes/upload.routes";
 import webhookRoutes from "./routes/webhook.routes";
-import "./workers/webhook.worker";
-import "./workers/notification.worker";
+import { defaultUploadDir } from "./storage/local";
+import { startWorkers } from "./workers";
 
 const app = express();
 
@@ -37,6 +53,7 @@ if (trustProxy !== undefined) {
   app.set("trust proxy", trustProxy);
 }
 
+app.use(httpLogger);
 app.use(helmet());
 app.use(
   cors({
@@ -58,11 +75,14 @@ app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
 // 100kb default. Mounted first; the global parser below then skips these.
 app.use("/api/uploads", express.json({ limit: "10mb" }));
 app.use(express.json());
-app.use(morgan("dev"));
 
+/**
+ * Links saved before uploads moved to `/api/files` point here. Kept so those
+ * responses still open; new uploads are never served from this path.
+ */
 app.use(
   "/uploads",
-  express.static(path.join(__dirname, "../uploads"), {
+  express.static(path.resolve(env.UPLOAD_DIR ?? defaultUploadDir), {
     /**
      * These files were uploaded by anonymous respondents and are served from the
      * API's own origin. Rendered inline, an uploaded `.svg` or `.html` would run
@@ -77,26 +97,65 @@ app.use(
   })
 );
 
+app.use("/health", healthRoutes);
+
 app.use("/api", apiLimiter);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/files", filesRoutes);
 app.use("/api/forms", formRoutes);
+app.use("/api/invites", inviteRoutes);
+app.use("/api/org", orgRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/responses", responseRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/webhooks", webhookRoutes);
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
+app.use((_req, res) => {
+  res.status(404).json({ message: "Not found" });
 });
 
+/**
+ * Last stop for anything a handler threw or passed to `next`. Client errors
+ * raised by middleware (malformed JSON, a body over the size limit) keep their
+ * status; everything else is logged with its stack and answered with a
+ * generic 500 that never leaks internals.
+ */
+app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) return next(error);
+
+  const status =
+    typeof error === "object" && error && "status" in error
+      ? Number((error as { status: unknown }).status)
+      : 500;
+
+  if (status >= 400 && status < 500) {
+    const expose =
+      typeof error === "object" && error && "expose" in error && error.expose;
+    const message =
+      expose && error instanceof Error ? error.message : "Bad request";
+
+    return res.status(status).json({ message, requestId: req.id });
+  }
+
+  req.log.error({ err: error }, "Unhandled error in request");
+  return res
+    .status(500)
+    .json({ message: "Internal server error", requestId: req.id });
+});
+
+const workers = runWorkersInApi ? startWorkers() : [];
+
 const server = app.listen(env.PORT, () => {
-  console.log(`API running on :${env.PORT} (${env.NODE_ENV})`);
+  logger.info(
+    { port: env.PORT, env: env.NODE_ENV, workersInProcess: workers.length > 0 },
+    "API listening"
+  );
 
   for (const warning of configWarnings) {
-    console.warn(`[config] ${warning}`);
+    logger.warn(warning);
   }
 });
 
-registerGracefulShutdown(server);
+registerGracefulShutdown({ server, workers });

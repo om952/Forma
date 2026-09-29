@@ -9,12 +9,14 @@
 
 import type { Server } from "node:http";
 
+import type { Worker } from "bullmq";
+
 import { prisma } from "./db/prisma";
+import { logger } from "./observability/logger";
+import { flushErrorReports } from "./observability/sentry";
 import { notificationQueue } from "./queues/notification.queue";
 import { redisConnection, redisRequestConnection } from "./queues/redis";
 import { webhookQueue } from "./queues/webhook.queue";
-import { notificationWorker } from "./workers/notification.worker";
-import { webhookWorker } from "./workers/webhook.worker";
 
 /**
  * Hard ceiling on draining. Must stay below the platform's SIGKILL grace period
@@ -22,12 +24,19 @@ import { webhookWorker } from "./workers/webhook.worker";
  */
 const FORCE_EXIT_MS = 15_000;
 
+const log = logger.child({ component: "shutdown" });
+
+let shuttingDown = false;
+
+/** True once a drain has started. Readiness checks report 503 from then on. */
+export const isShuttingDown = () => shuttingDown;
+
 /** Runs a close step without letting one failure abort the rest of the drain. */
 const closeQuietly = async (label: string, close: () => Promise<unknown>) => {
   try {
     await close();
   } catch (error) {
-    console.error(`[shutdown] ${label} failed to close cleanly`, error);
+    log.error({ err: error, step: label }, "Failed to close cleanly");
   }
 };
 
@@ -39,20 +48,23 @@ const closeHttpServer = (server: Server) =>
     server.closeIdleConnections();
   });
 
-export const registerGracefulShutdown = (server: Server) => {
-  let shuttingDown = false;
+type ShutdownTargets = {
+  /** The API's HTTP server; absent in the worker process. */
+  server?: Server;
+  /** Queue consumers running in this process; may be empty in the API. */
+  workers: Worker[];
+};
 
+export const registerGracefulShutdown = ({ server, workers }: ShutdownTargets) => {
   const shutdown = async (signal: string) => {
     // A second Ctrl-C (or a SIGTERM racing a SIGINT) must not restart the drain.
     if (shuttingDown) return;
     shuttingDown = true;
 
-    console.log(`[shutdown] ${signal} received — draining`);
+    log.info({ signal }, "Draining");
 
     const forceExit = setTimeout(() => {
-      console.error(
-        `[shutdown] still draining after ${FORCE_EXIT_MS}ms — forcing exit`
-      );
+      log.error({ afterMs: FORCE_EXIT_MS }, "Still draining — forcing exit");
       process.exit(1);
     }, FORCE_EXIT_MS);
 
@@ -61,16 +73,21 @@ export const registerGracefulShutdown = (server: Server) => {
 
     // Stop taking new work before tearing anything down, so the load balancer
     // sees the port close while the dependencies below are still usable.
-    await closeQuietly("HTTP server", () => closeHttpServer(server));
-    console.log("[shutdown] HTTP server closed");
+    if (server) {
+      await closeQuietly("HTTP server", () => closeHttpServer(server));
+      log.info("HTTP server closed");
+    }
 
     // Workers next. BullMQ's `close()` waits for the job in flight to finish,
     // which is the whole reason a delivery is no longer abandoned mid-request.
-    await Promise.all([
-      closeQuietly("webhook worker", () => webhookWorker.close()),
-      closeQuietly("notification worker", () => notificationWorker.close()),
-    ]);
-    console.log("[shutdown] workers drained");
+    if (workers.length > 0) {
+      await Promise.all(
+        workers.map((worker) =>
+          closeQuietly(`worker ${worker.name}`, () => worker.close())
+        )
+      );
+      log.info("Workers drained");
+    }
 
     await Promise.all([
       closeQuietly("webhook queue", () => webhookQueue.close()),
@@ -85,9 +102,12 @@ export const registerGracefulShutdown = (server: Server) => {
       closeQuietly("request redis", () => redisRequestConnection.quit()),
     ]);
 
+    log.info("Shutdown complete");
+    // Last, so a crash that triggered this drain still reaches Sentry.
+    await closeQuietly("error reporting", () => flushErrorReports());
+
     clearTimeout(forceExit);
-    console.log("[shutdown] complete");
-    process.exit(0);
+    process.exit(signal === "SIGTERM" || signal === "SIGINT" ? 0 : 1);
   };
 
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
@@ -96,12 +116,15 @@ export const registerGracefulShutdown = (server: Server) => {
   // A rejection nobody handled leaves the process in an unknown state. Log it
   // loudly and drain rather than carrying on and serving from a broken one.
   process.on("unhandledRejection", (reason) => {
-    console.error("[fatal] unhandled promise rejection", reason);
+    log.fatal(
+      { err: reason instanceof Error ? reason : new Error(String(reason)) },
+      "Unhandled promise rejection"
+    );
     void shutdown("unhandledRejection");
   });
 
   process.on("uncaughtException", (error) => {
-    console.error("[fatal] uncaught exception", error);
+    log.fatal({ err: error }, "Uncaught exception");
     void shutdown("uncaughtException");
   });
 };

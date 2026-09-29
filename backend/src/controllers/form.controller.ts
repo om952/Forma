@@ -70,7 +70,7 @@ export const createForm = async (req: Request, res: Response) => {
       createdAt: form.createdAt,
     });
   } catch (error) {
-    console.error("createForm failed", error);
+    req.log.error({ err: error }, "createForm failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -98,7 +98,7 @@ export const getForms = async (req: Request, res: Response) => {
 
     return res.json(forms);
   } catch (error) {
-    console.error("getForms failed", error);
+    req.log.error({ err: error }, "getForms failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -140,7 +140,7 @@ export const getFormById = async (req: Request, res: Response) => {
 
     return res.json(form);
   } catch (error) {
-    console.error("getFormById failed", error);
+    req.log.error({ err: error }, "getFormById failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -182,7 +182,7 @@ export const getPublicForm = async (req: Request, res: Response) => {
 
     return res.json(form);
   } catch (error) {
-    console.error("getPublicForm failed", error);
+    req.log.error({ err: error }, "getPublicForm failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -233,7 +233,7 @@ export const updateForm = async (req: Request, res: Response) => {
 
     return res.json(form);
   } catch (error) {
-    console.error("updateForm failed", error);
+    req.log.error({ err: error }, "updateForm failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -263,7 +263,7 @@ export const deleteForm = async (req: Request, res: Response) => {
 
     return res.json({ message: "Form deleted" });
   } catch (error) {
-    console.error("deleteForm failed", error);
+    req.log.error({ err: error }, "deleteForm failed");
     return res.status(500).json({ message: "Internal server error" });
   }
 };

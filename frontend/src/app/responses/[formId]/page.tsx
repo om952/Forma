@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
-import { apiFetch, getApiBaseUrl } from "../../../lib/api";
-import { getAuthToken } from "../../../lib/auth";
+import { apiFetch } from "../../../lib/api";
+import { useAuthToken } from "../../../lib/auth";
 
 type ResponseItem = {
   id: string;
@@ -28,12 +28,7 @@ export default function ResponsesPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
-  const apiBase = getApiBaseUrl();
-
-  useEffect(() => {
-    setToken(getAuthToken());
-  }, []);
+  const token = useAuthToken();
 
   useEffect(() => {
     const fetchData = async () => {

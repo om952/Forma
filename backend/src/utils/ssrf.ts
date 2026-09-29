@@ -84,24 +84,101 @@ export const blockedIpv4Reason = (ip: string): string | null => {
   return null;
 };
 
+/**
+ * Expands an IPv6 address into its eight 16-bit groups, or null if malformed.
+ *
+ * The rules below must see the address as numbers, not text: one address has
+ * many spellings. `new URL()` rewrites `[::ffff:127.0.0.1]` to `::ffff:7f00:1`,
+ * so a pattern written against the dotted form never sees what we actually
+ * connect to.
+ */
+const ipv6ToHextets = (ip: string): number[] | null => {
+  let text = ip;
+
+  // A trailing dotted quad (::ffff:1.2.3.4) stands for the last two groups.
+  const lastColon = text.lastIndexOf(":");
+  const tail = text.slice(lastColon + 1);
+
+  if (tail.includes(".")) {
+    const v4 = ipv4ToInt(tail);
+    if (v4 === null) return null;
+
+    text = `${text.slice(0, lastColon + 1)}${(v4 >>> 16).toString(16)}:${(v4 & 0xffff).toString(16)}`;
+  }
+
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+
+  const groups = (part: string) => (part === "" ? [] : part.split(":"));
+  const head = groups(halves[0] ?? "");
+  const rest = halves.length === 2 ? groups(halves[1] ?? "") : [];
+
+  if (halves.length === 1 && head.length !== 8) return null;
+  if (halves.length === 2 && head.length + rest.length > 7) return null;
+
+  const zeros: string[] = Array(8 - head.length - rest.length).fill("0");
+  const hextets: number[] = [];
+
+  for (const group of [...head, ...zeros, ...rest]) {
+    if (!/^[0-9a-f]{1,4}$/.test(group)) return null;
+    hextets.push(parseInt(group, 16));
+  }
+
+  return hextets;
+};
+
+/** Dotted form of the IPv4 address carried in two 16-bit groups. */
+const embeddedIpv4 = (high: number, low: number): string =>
+  `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+
 /** Why this IPv6 address is off-limits, or null if it is publicly routable. */
 export const blockedIpv6Reason = (ip: string): string | null => {
   const normalized = ip.toLowerCase().split("%")[0] ?? "";
+  const h = ipv6ToHextets(normalized);
 
-  // IPv4-mapped (::ffff:127.0.0.1) and IPv4-compatible forms tunnel the whole
-  // v4 space through v6, so they have to be judged by the v4 rules.
-  const mapped = /^(?:::ffff:|::)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(normalized);
-  if (mapped?.[1]) return blockedIpv4Reason(mapped[1]);
+  if (!h) return "malformed IPv6 address";
 
-  if (normalized === "::") return "unspecified address";
-  if (normalized === "::1") return "loopback";
+  const [h0 = 0, h1 = 0, h2 = 0, , h4 = 0, h5 = 0, h6 = 0, h7 = 0] = h;
+  const zeroUntil = (end: number) => h.slice(0, end).every((group) => group === 0);
 
+  if (zeroUntil(8)) return "unspecified address";
+  if (zeroUntil(7) && h7 === 1) return "loopback";
+
+  // These prefixes carry a whole IPv4 address inside the IPv6 one, and the
+  // host or a gateway on the path will deliver to that v4 address. They have
+  // to be judged by the v4 rules or they become a tunnel around them.
+  // ::ffff:0:0/96 — IPv4-mapped.
+  if (zeroUntil(5) && h5 === 0xffff) return blockedIpv4Reason(embeddedIpv4(h6, h7));
+  // ::/96 — IPv4-compatible (deprecated).
+  if (zeroUntil(6)) return blockedIpv4Reason(embeddedIpv4(h6, h7));
+  // ::ffff:0:0:0/96 — IPv4-translated (RFC 2765).
+  if (zeroUntil(4) && h4 === 0xffff && h5 === 0) {
+    return blockedIpv4Reason(embeddedIpv4(h6, h7));
+  }
+  // 64:ff9b::/96 — NAT64 well-known prefix.
+  if (h0 === 0x64 && h1 === 0xff9b && h.slice(2, 6).every((group) => group === 0)) {
+    return blockedIpv4Reason(embeddedIpv4(h6, h7));
+  }
+  // 2002::/16 — 6to4; the v4 address sits right after the prefix.
+  if (h0 === 0x2002) return blockedIpv4Reason(embeddedIpv4(h1, h2));
+
+  // 64:ff9b:1::/48 — NAT64 for local use only.
+  if (h0 === 0x64 && h1 === 0xff9b && h2 === 1) return "local-use NAT64";
+  // 2001::/32 — Teredo. The client address is obfuscated, and no legitimate
+  // webhook endpoint lives behind a Teredo tunnel, so refuse the whole range.
+  if (h0 === 0x2001 && h1 === 0) return "Teredo tunnel";
+  // 2001:db8::/32 — documentation.
+  if (h0 === 0x2001 && h1 === 0xdb8) return "documentation range";
+  // 100::/64 — discard-only.
+  if (h0 === 0x100 && h.slice(1, 4).every((group) => group === 0)) return "discard-only";
   // fc00::/7 — unique local addresses.
-  if (/^f[cd][0-9a-f]{2}:/.test(normalized)) return "unique local address";
+  if ((h0 & 0xfe00) === 0xfc00) return "unique local address";
   // fe80::/10 — link-local.
-  if (/^fe[89ab][0-9a-f]:/.test(normalized)) return "link-local";
+  if ((h0 & 0xffc0) === 0xfe80) return "link-local";
+  // fec0::/10 — site-local (deprecated, but still routed internally by some).
+  if ((h0 & 0xffc0) === 0xfec0) return "site-local";
   // ff00::/8 — multicast.
-  if (/^ff[0-9a-f]{2}:/.test(normalized)) return "multicast";
+  if ((h0 & 0xff00) === 0xff00) return "multicast";
 
   return null;
 };
