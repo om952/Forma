@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
 import FormSubNav from "../../components/FormSubNav";
@@ -71,9 +71,14 @@ export default function FormBuilderPage() {
   const [ruleAction, setRuleAction] = useState<RuleAction>("show");
   const [ruleTargetFieldId, setRuleTargetFieldId] = useState("");
 
+  // The id of a form this page just created. It becomes the edit target, but
+  // is already in the builder: loading it again would only wipe the "saved"
+  // confirmation.
+  const createdHere = useRef<string | null>(null);
+
   // Hydrate the builder when editing an existing form.
   useEffect(() => {
-    if (!formId || !token) return;
+    if (!formId || !token || formId === createdHere.current) return;
 
     const loadExisting = async () => {
       setIsLoading(true);
@@ -153,7 +158,10 @@ export default function FormBuilderPage() {
       // it instead of creating a duplicate.
       if (!isEditing) {
         const created = (await response.json()) as { id?: string };
-        if (created?.id) setFormId(created.id);
+        if (created?.id) {
+          createdHere.current = created.id;
+          setFormId(created.id);
+        }
       }
 
       setStatus(isEditing ? "Form updated successfully." : "Form saved successfully.");
@@ -277,6 +285,7 @@ export default function FormBuilderPage() {
               <label className="label">Form title</label>
               <input
                 className="input mt-2"
+                data-testid="builder-title"
                 placeholder="Customer feedback"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -284,34 +293,35 @@ export default function FormBuilderPage() {
             </div>
 
             <div className="mt-6 grid grid-cols-2 gap-2.5">
-              <button className="btn-secondary text-left" onClick={() => addField("text")}>
+              <button className="btn-secondary text-left" data-testid="add-field-text" onClick={() => addField("text")}>
                 {FIELD_ICONS.text} Text
               </button>
-              <button className="btn-secondary text-left" onClick={() => addField("textarea")}>
+              <button className="btn-secondary text-left" data-testid="add-field-textarea" onClick={() => addField("textarea")}>
                 {FIELD_ICONS.textarea} Long answer
               </button>
-              <button className="btn-secondary text-left" onClick={() => addField("email")}>
+              <button className="btn-secondary text-left" data-testid="add-field-email" onClick={() => addField("email")}>
                 {FIELD_ICONS.email} Email
               </button>
-              <button className="btn-secondary text-left" onClick={() => addField("number")}>
+              <button className="btn-secondary text-left" data-testid="add-field-number" onClick={() => addField("number")}>
                 {FIELD_ICONS.number} Number
               </button>
-              <button className="btn-secondary text-left" onClick={() => addField("date")}>
+              <button className="btn-secondary text-left" data-testid="add-field-date" onClick={() => addField("date")}>
                 {FIELD_ICONS.date} Date
               </button>
-              <button className="btn-secondary text-left" onClick={() => addField("checkbox")}>
+              <button className="btn-secondary text-left" data-testid="add-field-checkbox" onClick={() => addField("checkbox")}>
                 {FIELD_ICONS.checkbox} Checkbox
               </button>
-              <button className="btn-secondary text-left" onClick={() => addField("select")}>
+              <button className="btn-secondary text-left" data-testid="add-field-select" onClick={() => addField("select")}>
                 {FIELD_ICONS.select} Select
               </button>
-              <button className="btn-secondary text-left" onClick={() => addField("file")}>
+              <button className="btn-secondary text-left" data-testid="add-field-file" onClick={() => addField("file")}>
                 {FIELD_ICONS.file} File
               </button>
             </div>
 
             <button
               className="btn-secondary mt-2.5 w-full text-left"
+              data-testid="builder-rules-toggle"
               onClick={() => setShowRules((s) => !s)}
             >
               {showRules ? "Hide Rules" : "Conditional Rules"}
@@ -321,6 +331,7 @@ export default function FormBuilderPage() {
               <label className="label">Thank-you message</label>
               <textarea
                 className="input mt-2 min-h-20"
+                data-testid="builder-thankyou"
                 placeholder="Thanks! We'll be in touch shortly."
                 value={thankYouMessage}
                 onChange={(e) => setThankYouMessage(e.target.value)}
@@ -333,6 +344,7 @@ export default function FormBuilderPage() {
             <div className="mt-8 space-y-3">
               <button
                 className="btn-primary w-full"
+                data-testid="builder-save"
                 onClick={handleSave}
                 disabled={isSaving || isLoading}
               >
@@ -354,7 +366,7 @@ export default function FormBuilderPage() {
                 {formId ? "New Form" : "Clear All"}
               </button>
               {token ? <p className="text-xs text-slate-500">Authenticated</p> : null}
-              {status ? <div className="status-info">{status}</div> : null}
+              {status ? <div className="status-info" data-testid="builder-status">{status}</div> : null}
             </div>
           </div>
         </aside>
@@ -384,6 +396,7 @@ export default function FormBuilderPage() {
                 schema.map((field, index) => (
                   <div
                     key={field.id}
+                    data-testid="builder-field"
                     draggable
                     onDragStart={() => handleDragStart(index)}
                     onDragOver={(e) => handleDragOver(e, index)}
@@ -432,12 +445,14 @@ export default function FormBuilderPage() {
                     ) : null}
                     <div className="mt-3 flex gap-2">
                       <button
+                        data-testid="builder-field-edit"
                         onClick={() => handleEditField(field)}
                         className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
                       >
                         Edit
                       </button>
                       <button
+                        data-testid="builder-field-remove"
                         onClick={() => removeField(field.id)}
                         className="rounded-lg bg-rose-50 px-3 py-1 text-xs font-medium text-rose-600 hover:bg-rose-100"
                       >
@@ -500,6 +515,7 @@ export default function FormBuilderPage() {
                     <select
                       className="input"
                       value={ruleIfFieldId}
+                      data-testid="rule-if"
                       onChange={(e) => setRuleIfFieldId(e.target.value)}
                     >
                       <option value="">Select source field</option>
@@ -512,6 +528,7 @@ export default function FormBuilderPage() {
                     <select
                       className="input"
                       value={ruleOperator}
+                      data-testid="rule-operator"
                       onChange={(e) => setRuleOperator(e.target.value as RuleOperator)}
                     >
                       <option value="equals">equals</option>
@@ -524,12 +541,14 @@ export default function FormBuilderPage() {
                     className="input"
                     placeholder="Value to match"
                     value={ruleValue}
+                    data-testid="rule-value"
                     onChange={(e) => setRuleValue(e.target.value)}
                   />
                   <div className="grid grid-cols-2 gap-3">
                     <select
                       className="input"
                       value={ruleAction}
+                      data-testid="rule-action"
                       onChange={(e) => setRuleAction(e.target.value as RuleAction)}
                     >
                       <option value="show">show</option>
@@ -538,6 +557,7 @@ export default function FormBuilderPage() {
                     <select
                       className="input"
                       value={ruleTargetFieldId}
+                      data-testid="rule-target"
                       onChange={(e) => setRuleTargetFieldId(e.target.value)}
                     >
                       <option value="">Select target field</option>
@@ -549,6 +569,7 @@ export default function FormBuilderPage() {
                     </select>
                   </div>
                   <button
+                    data-testid="rule-add"
                     onClick={editingRule ? handleUpdateRule : handleAddRule}
                     className="btn-primary w-full"
                   >
@@ -583,6 +604,7 @@ export default function FormBuilderPage() {
                 <label className="label">Label</label>
                 <input
                   className="input mt-1"
+                  data-testid="field-label"
                   value={fieldLabel}
                   onChange={(e) => setFieldLabel(e.target.value)}
                 />
@@ -590,6 +612,7 @@ export default function FormBuilderPage() {
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
+                  data-testid="field-required"
                   checked={fieldRequired}
                   onChange={(e) => setFieldRequired(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300"
@@ -601,6 +624,7 @@ export default function FormBuilderPage() {
                   <label className="label">Options (comma-separated)</label>
                   <input
                     className="input mt-1"
+                    data-testid="field-options"
                     value={fieldOptions}
                     onChange={(e) => setFieldOptions(e.target.value)}
                     placeholder="Option 1, Option 2, Option 3"
@@ -609,7 +633,7 @@ export default function FormBuilderPage() {
               ) : null}
             </div>
             <div className="mt-6 flex gap-3">
-              <button onClick={handleUpdateField} className="btn-primary flex-1">
+              <button data-testid="field-save" onClick={handleUpdateField} className="btn-primary flex-1">
                 Save Changes
               </button>
               <button onClick={() => setEditingField(null)} className="btn-secondary flex-1">

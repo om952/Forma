@@ -98,32 +98,35 @@ collided with `PATCH/DELETE /api/webhooks/:webhookId` (list/create now take
 
 ---
 
-## Phase 4: Automated Test Suites
+## Phase 4: Automated Test Suites — DONE 2026-09-30
 
-**Goal:** This is the biggest gap against the project's own claims — 0% built
-so far — and the thing most likely to be checked directly.
+- [x] Java 21 + Selenium 4.49 + Cucumber 8 suite in `e2e/`, Page Object
+      Model, 35 scenarios across 8 features (auth, builder, responding,
+      webhooks, team/RBAC, account security, analytics, billing), `@smoke`
+      subset of 6. Maven wrapper, Selenium Manager for chromedriver.
+      Setup through the API; the database only for what a test stack has
+      no path for (Premium tier, failed deliveries, emailed link tokens).
+      Failure screenshots + page text in the report and `target/failures`.
+- [x] Runs headless in CI after the smoke test, on the production images
+      with `docker-compose.e2e.yaml` (Postgres published for setup,
+      `RATE_LIMIT_SCALE=100`); report kept as a CI artifact.
+- [x] Backend integration tests (`npm run test:integration`, real Postgres
+      and Redis, in CI): tenant isolation across every org-scoped endpoint,
+      forged token claims, the scoped Prisma client. A planted scoping bug
+      failed 10 of 26.
+- [x] Frontend tests with Vitest + Testing Library (24): builder store and
+      rule visibility, role helpers, API client errors, the auth page, the
+      analytics charts.
 
-- [ ] Java + Selenium + Cucumber suite, Page Object Model, 25+ scenarios
-      across: auth (signup/login/invalid creds), form builder (create,
-      field types, conditional rules, save), public submission (valid,
-      validation errors, file upload), webhooks (create, test, dead-letter
-      replay), billing (upgrade/downgrade gating), RBAC (member vs.
-      admin vs. owner actions).
-- [ ] Headless Chrome (or Chromium) in CI — a `.github/workflows` job
-      separate from the Node CI added in Phase 1, since it's a different
-      toolchain (Maven/Gradle + JDK).
-- [ ] Backend integration tests against a real Postgres (the 82 unit tests
-      added in Phase 0/1 mock or use pure functions; none hit a live DB
-      through Prisma) — org-isolation is the highest-value target here,
-      since `scopedPrisma.ts` currently has unit tests but nothing that
-      actually tries to read another org's data end-to-end.
-- [ ] Frontend component tests (currently zero) — at minimum the builder's
-      schema/rule logic and the auth forms.
+**Found and fixed by the new tests:** visit-tracking SQL wrote `now()` in the
+connection's time zone into UTC columns (funnel and abandonment skewed on any
+non-UTC database); the builder wiped its "Form saved successfully." message
+right after creating a form; the billing page offered members a Subscribe
+button the API refuses.
 
-**Deliverable:** `mvn test` (or equivalent) runs the Selenium/Cucumber suite
-headless in CI on every PR, backend integration tests catch cross-org leaks,
-and the frontend has some test coverage.
-**Effort:** ~1.5–2 weeks — the largest single phase.
+**Verified:** 35/35 scenarios twice in a row against a production build of the
+web app and the API; a planted last-owner bug failed the suite. The combined
+Docker + browser run is first exercised by CI on push.
 
 ---
 

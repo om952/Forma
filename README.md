@@ -37,10 +37,12 @@ Forma is a multi-tenant B2B SaaS form builder with authentication, org-scoped da
 /
 ├── backend/                   Express API and queue workers (one Docker image)
 ├── frontend/                  Next.js app
+├── e2e/                       Browser tests: Java, Selenium, Cucumber
 ├── deploy/                    Caddyfile and the stack smoke test
 ├── docker-compose.yaml        Postgres and Redis for local development
 ├── docker-compose.prod.yaml   The whole stack on one host
-└── .github/workflows/ci.yml   Tests, builds and a smoke test of the stack
+├── docker-compose.e2e.yaml    Test override for the browser tests
+└── .github/workflows/ci.yml   Tests, builds, smoke and browser tests
 ```
 
 ## Core flows
@@ -329,16 +331,36 @@ are not persistent. The frontend reads the API origin from the
 `NEXT_PUBLIC_API_BASE_URL` build arg. Leave it empty only when a proxy serves
 the API under `/api` on the frontend's own origin, as in the Compose setup.
 
+## Testing
+
+| Suite | Command | What it covers |
+| --- | --- | --- |
+| Backend unit | `cd backend && npm test` | Role rules, validation schemas, token helpers, analytics SQL builders, pagination, SSRF guard, billing events, the OpenAPI builder. No database needed. |
+| Backend integration | `cd backend && npm run test:integration` | The real app on a real Postgres and Redis. Tenant isolation: a signed-in org aims every org-scoped endpoint at another org's records and must get a 404, with nothing changed. Also forged token claims and the scoped database client. Needs `DATABASE_URL`, `REDIS_URL` and `JWT_SECRET`, and migrations applied. |
+| Frontend | `cd frontend && npm test` | Vitest and Testing Library: the builder's form and rule logic, the role helpers, the API client's error handling, the sign-in page, and the analytics charts. |
+| Browser (E2E) | `cd e2e && ./mvnw test` | Java, Selenium and Cucumber, using the Page Object Model: 35 scenarios through the real UI, covering auth, the builder, responding, webhooks, team roles, account security, analytics and billing. See [e2e/README.md](e2e/README.md). |
+
+`RATE_LIMIT_SCALE` multiplies every rate limit, so a suite driving the whole
+app from one machine isn't throttled. `docker-compose.e2e.yaml` sets it for
+the browser tests. Leave it at 1 in production; the server warns at startup
+when it isn't.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every pull request and every push to `main`:
 
-- **Backend**: typecheck, unit tests and build. It also applies every
-  migration to an empty Postgres and fails if `schema.prisma` has changes
-  that no migration covers.
-- **Frontend**: lint and production build.
-- **Docker stack**: builds both images, starts `docker-compose.prod.yaml` and
-  runs `deploy/smoke-test.sh` against it.
+- **Backend**:
+  - typecheck, unit tests and build
+  - applies every migration to an empty Postgres, and fails if `schema.prisma`
+    has changes that no migration covers
+  - runs the integration tests against that Postgres and a Redis
+- **Frontend**: lint, unit and component tests, and the production build.
+- **Docker stack and browser tests**:
+  - builds both images and starts the production stack with the test override
+  - runs `deploy/smoke-test.sh`, then the Selenium and Cucumber suite in
+    headless Chrome
+  - keeps the Cucumber report and any failure screenshots as the
+    `browser-test-report` artifact
 
 ## Notes
 

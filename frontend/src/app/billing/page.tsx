@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
 import { apiFetch } from "../../lib/api";
-import { useAuthToken } from "../../lib/auth";
+import { canManageBilling, useAuthToken, useAuthUser } from "../../lib/auth";
 
 type SubscriptionStatus = {
   tier: "FREE" | "PREMIUM";
@@ -46,6 +46,8 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const token = useAuthToken();
+  // The API refuses plan changes from members; don't offer them the buttons.
+  const canManage = canManageBilling(useAuthUser());
   const [selectedPlan, setSelectedPlan] = useState<"monthly" | "yearly">("monthly");
   const [notice, setNotice] = useState<string | null>(null);
   // Bumped to re-read the plan after a checkout or cancellation.
@@ -179,7 +181,7 @@ export default function BillingPage() {
           <div className="card-elevated border-emerald-200 bg-emerald-50/80">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-semibold tracking-tight text-emerald-900">Premium Plan</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-emerald-900" data-testid="billing-plan">Premium Plan</h2>
                 <p className="mt-1 text-sm text-emerald-700">
                   Status: {status.status ?? "active"}
                   {status.currentPeriodEnd
@@ -201,7 +203,11 @@ export default function BillingPage() {
               <li>✓ File uploads without limits</li>
             </ul>
 
-            {status.cancelAtPeriodEnd ? (
+            {!canManage ? (
+              <p className="mt-6 text-sm text-emerald-800" data-testid="billing-managers-only">
+                Only owners and admins can change the plan.
+              </p>
+            ) : status.cancelAtPeriodEnd ? (
               <p className="mt-6 text-sm text-emerald-800">
                 Your subscription won&apos;t renew. You&apos;ll move to the Free plan when this
                 period ends.
@@ -218,7 +224,7 @@ export default function BillingPage() {
         ) : (
           <div className="space-y-6">
             <div className="card-elevated">
-              <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Upgrade to Premium</h2>
+              <h2 className="text-2xl font-semibold tracking-tight text-slate-900" data-testid="billing-plan">Upgrade to Premium</h2>
               <p className="mt-2 text-sm text-slate-600">
                 You are currently on the Free plan. Upgrade to unlock advanced features.
               </p>
@@ -251,12 +257,19 @@ export default function BillingPage() {
                 </button>
               </div>
 
-              <button
-                onClick={handleSubscribe}
-                className="btn-primary mt-6 w-full"
-              >
-                Subscribe to Premium
-              </button>
+              {canManage ? (
+                <button
+                  onClick={handleSubscribe}
+                  className="btn-primary mt-6 w-full"
+                  data-testid="billing-subscribe"
+                >
+                  Subscribe to Premium
+                </button>
+              ) : (
+                <p className="status-info mt-6" data-testid="billing-managers-only">
+                  Only owners and admins can change the plan. Ask one of them to upgrade.
+                </p>
+              )}
 
               <p className="mt-4 text-xs text-slate-500">
                 Test mode: no real charges. Use Razorpay test card 5267 3181 8797 5449.

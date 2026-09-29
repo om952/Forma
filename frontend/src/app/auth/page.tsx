@@ -153,6 +153,7 @@ export default function AuthPage() {
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-600 hover:text-slate-900"
               }`}
+              data-testid="auth-tab-signup"
               onClick={() => setMode("signup")}
             >
               Sign up
@@ -164,6 +165,7 @@ export default function AuthPage() {
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-600 hover:text-slate-900"
               }`}
+              data-testid="auth-tab-login"
               onClick={() => setMode("login")}
             >
               Log in
@@ -176,6 +178,7 @@ export default function AuthPage() {
               className="input mt-2"
               type="email"
               value={email}
+              data-testid="auth-email"
               onChange={(event) => setEmail(event.target.value)}
               required
             />
@@ -187,6 +190,7 @@ export default function AuthPage() {
               className="input mt-2"
               type="password"
               value={password}
+              data-testid="auth-password"
               onChange={(event) => setPassword(event.target.value)}
               required
             />
@@ -207,6 +211,7 @@ export default function AuthPage() {
               className="input mt-2"
               type="text"
               value={organizationName}
+              data-testid="auth-org"
               onChange={(event) => setOrganizationName(event.target.value)}
               placeholder={mode === "signup" ? "Acme Inc" : "Optional"}
               required={mode === "signup"}
@@ -215,6 +220,7 @@ export default function AuthPage() {
 
           <button
             className="btn-primary w-full"
+            data-testid="auth-submit"
             type="submit"
             disabled={isSubmitting}
           >
@@ -226,7 +232,7 @@ export default function AuthPage() {
           </button>
 
           {status ? (
-            <div className="status-info">{status}</div>
+            <div className="status-info" data-testid="auth-status">{status}</div>
           ) : null}
         </form>
         </div>

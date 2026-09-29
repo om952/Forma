@@ -92,6 +92,13 @@ const schema = z
     /** MinIO needs path-style URLs. */
     S3_FORCE_PATH_STYLE: z.stringbool().default(false),
 
+    // --- Rate limits ---
+    /**
+     * Multiplies every rate limit. For load tests and end-to-end suites that
+     * drive the whole app from one address; leave at 1 in production.
+     */
+    RATE_LIMIT_SCALE: z.coerce.number().int().min(1).max(10_000).default(1),
+
     // --- Observability ---
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
@@ -258,6 +265,9 @@ export const configWarnings: string[] = [
   env.RESEND_API_KEY
     ? null
     : "RESEND_API_KEY is not set — no email is sent: submission notifications and email verification are skipped, invite links must be shared by hand, and password reset does not work.",
+  env.RATE_LIMIT_SCALE > 1
+    ? `RATE_LIMIT_SCALE is ${env.RATE_LIMIT_SCALE}: every rate limit is ${env.RATE_LIMIT_SCALE} times its default. Meant for tests only.`
+    : null,
   isProduction && !env.TRUST_PROXY
     ? "TRUST_PROXY is not set — if this runs behind a proxy, rate limits will key on the proxy's IP and apply to all users at once."
     : null,

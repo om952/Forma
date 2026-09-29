@@ -203,8 +203,8 @@ export default function TeamPage() {
           </p>
         </header>
 
-        {error ? <div className="status-error mb-6">{error}</div> : null}
-        {notice ? <div className="status-success mb-6">{notice}</div> : null}
+        {error ? <div className="status-error mb-6" data-testid="team-error">{error}</div> : null}
+        {notice ? <div className="status-success mb-6" data-testid="team-notice">{notice}</div> : null}
 
         {!token ? (
           <div className="card-elevated p-10 text-center">
@@ -270,6 +270,7 @@ export default function TeamPage() {
                             type="button"
                             className="btn-secondary px-3 py-1.5 text-xs text-rose-600"
                             disabled={busy}
+                            data-testid="member-remove"
                             onClick={() => removeMember(member)}
                           >
                             Remove
@@ -293,6 +294,7 @@ export default function TeamPage() {
                         className="input mt-2"
                         type="email"
                         value={inviteEmail}
+                        data-testid="invite-email"
                         onChange={(event) => setInviteEmail(event.target.value)}
                         required
                       />
@@ -302,6 +304,7 @@ export default function TeamPage() {
                       <select
                         className="input mt-2"
                         value={selectedInviteRole}
+                        data-testid="invite-role"
                         onChange={(event) => setInviteRole(event.target.value as OrgRole)}
                       >
                         {roleOptions.map((role) => (
@@ -311,7 +314,7 @@ export default function TeamPage() {
                         ))}
                       </select>
                     </label>
-                    <button className="btn-primary w-full" type="submit" disabled={busy}>
+                    <button className="btn-primary w-full" type="submit" disabled={busy} data-testid="invite-submit">
                       {busy ? "Working…" : "Send invitation"}
                     </button>
                   </form>

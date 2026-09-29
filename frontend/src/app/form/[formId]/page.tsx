@@ -227,7 +227,7 @@ export default function PublicFormPage() {
   if (!form || status) {
     return (
       <div className="page-bg flex items-center justify-center px-6">
-        <div className="status-error w-full max-w-md text-center">
+        <div className="status-error w-full max-w-md text-center" data-testid="form-status">
           {status || "Form not found"}
         </div>
       </div>
@@ -249,6 +249,8 @@ export default function PublicFormPage() {
             {visibleFields.map((field) => (
               <div
                 key={field.id}
+                data-testid="form-field"
+                data-field-id={field.id}
                 // Focus covers typing and tabbing; change covers inputs that can
                 // be set without taking focus. Each field is reported once.
                 onFocusCapture={() => reportFieldReached(field.id)}
@@ -366,7 +368,7 @@ export default function PublicFormPage() {
               </div>
             ))}
 
-            {status ? <div className="status-error">{status}</div> : null}
+            {status ? <div className="status-error" data-testid="form-status">{status}</div> : null}
 
             <button
               type="submit"
