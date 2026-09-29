@@ -10,6 +10,7 @@ type SubscriptionStatus = {
   tier: "FREE" | "PREMIUM";
   status: string | null;
   currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
 };
 
 const RAZORPAY_KEY_ID =
@@ -41,12 +42,17 @@ export default function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<"monthly" | "yearly">("monthly");
+  const [notice, setNotice] = useState<string | null>(null);
+  // Bumped to re-read the plan after a checkout or cancellation.
+  const [refreshKey, setRefreshKey] = useState(0);
   const apiBase = getApiBaseUrl();
 
   useEffect(() => {
     setToken(getAuthToken());
   }, []);
 
+  // The plan only changes once Razorpay's webhook reaches the server, so the
+  // page always re-reads it rather than assuming what a checkout did.
   useEffect(() => {
     const fetchStatus = async () => {
       if (!token) {
@@ -68,7 +74,7 @@ export default function BillingPage() {
     };
 
     fetchStatus();
-  }, [token]);
+  }, [token, refreshKey]);
 
   const handleSubscribe = async () => {
     try {
@@ -108,11 +114,8 @@ export default function BillingPage() {
         name: "Forma",
         description: `Forma Premium - ${selectedPlan}`,
         handler: () => {
-          setStatus({
-            tier: "PREMIUM",
-            status: "active",
-            currentPeriodEnd: null,
-          });
+          setNotice("Payment received. Your plan will update in a few seconds.");
+          window.setTimeout(() => setRefreshKey((key) => key + 1), 4000);
         },
         theme: { color: "#4f46e5" },
       });
@@ -124,16 +127,25 @@ export default function BillingPage() {
   };
 
   const handleCancel = async () => {
-    if (!confirm("Cancel your premium subscription?")) return;
+    if (
+      !confirm(
+        "Cancel your premium subscription? You keep Premium until the end of the period you have paid for."
+      )
+    )
+      return;
     if (!token) return;
 
     try {
+      setError(null);
       const response = await apiFetch("/api/payments/cancel-subscription", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error("Failed to cancel");
-      setStatus({ tier: "FREE", status: "cancelled", currentPeriodEnd: null });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || "Failed to cancel");
+      }
+      setRefreshKey((key) => key + 1);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Error");
     }
@@ -160,6 +172,7 @@ export default function BillingPage() {
         </div>
 
         {error ? <div className="status-error mb-6">{error}</div> : null}
+        {notice ? <div className="status-info mb-6">{notice}</div> : null}
 
         {status?.tier === "PREMIUM" ? (
           <div className="card-elevated border-emerald-200 bg-emerald-50/80">
@@ -169,12 +182,14 @@ export default function BillingPage() {
                 <p className="mt-1 text-sm text-emerald-700">
                   Status: {status.status ?? "active"}
                   {status.currentPeriodEnd
-                    ? ` · Renews on ${new Date(status.currentPeriodEnd).toLocaleDateString()}`
+                    ? ` · ${status.cancelAtPeriodEnd ? "Ends" : "Renews"} on ${new Date(
+                        status.currentPeriodEnd
+                      ).toLocaleDateString()}`
                     : ""}
                 </p>
               </div>
               <span className="rounded-full bg-emerald-100 px-4 py-1.5 text-sm font-semibold text-emerald-700">
-                Active
+                {status.cancelAtPeriodEnd ? "Cancelling" : "Active"}
               </span>
             </div>
 
@@ -185,12 +200,19 @@ export default function BillingPage() {
               <li>✓ File uploads without limits</li>
             </ul>
 
-            <button
-              onClick={handleCancel}
-              className="mt-6 rounded-xl border border-emerald-300 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-            >
-              Cancel Subscription
-            </button>
+            {status.cancelAtPeriodEnd ? (
+              <p className="mt-6 text-sm text-emerald-800">
+                Your subscription won&apos;t renew. You&apos;ll move to the Free plan when this
+                period ends.
+              </p>
+            ) : (
+              <button
+                onClick={handleCancel}
+                className="mt-6 rounded-xl border border-emerald-300 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+              >
+                Cancel Subscription
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-6">

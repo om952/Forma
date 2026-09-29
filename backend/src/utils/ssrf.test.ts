@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   BlockedUrlError,
+  assertDeliverableUrl,
   blockedAddressReason,
   blockedIpv4Reason,
   blockedIpv6Reason,
@@ -75,6 +76,81 @@ describe("blockedIpv6Reason", () => {
 
   it("ignores a zone index", () => {
     assert.equal(blockedIpv6Reason("fe80::1%eth0"), "link-local");
+  });
+
+  // The URL parser rewrites the dotted tail to hex, so this is the form the
+  // guard actually receives for `http://[::ffff:127.0.0.1]/`.
+  it("applies the IPv4 rules to mapped addresses written in hex", () => {
+    assert.equal(blockedIpv6Reason("::ffff:7f00:1"), "loopback");
+    assert.equal(blockedIpv6Reason("::ffff:a9fe:a9fe"), "link-local / cloud metadata");
+    assert.equal(blockedIpv6Reason("0:0:0:0:0:ffff:0a00:0001"), "private network");
+    assert.equal(blockedIpv6Reason("::ffff:808:808"), null);
+  });
+
+  it("applies the IPv4 rules to IPv4-compatible and translated addresses", () => {
+    assert.equal(blockedIpv6Reason("::7f00:1"), "loopback");
+    assert.equal(blockedIpv6Reason("::127.0.0.1"), "loopback");
+    assert.equal(blockedIpv6Reason("::ffff:0:7f00:1"), "loopback");
+  });
+
+  it("applies the IPv4 rules to NAT64 and 6to4 addresses", () => {
+    assert.equal(blockedIpv6Reason("64:ff9b::7f00:1"), "loopback");
+    assert.equal(blockedIpv6Reason("64:ff9b::a9fe:a9fe"), "link-local / cloud metadata");
+    assert.equal(blockedIpv6Reason("64:ff9b::808:808"), null);
+    assert.equal(blockedIpv6Reason("2002:7f00:1::"), "loopback");
+    assert.equal(blockedIpv6Reason("2002:c0a8:101::1"), "private network");
+    assert.equal(blockedIpv6Reason("2002:808:808::1"), null);
+  });
+
+  it("blocks other non-public ranges", () => {
+    assert.equal(blockedIpv6Reason("0:0:0:0:0:0:0:0"), "unspecified address");
+    assert.equal(blockedIpv6Reason("0:0:0:0:0:0:0:1"), "loopback");
+    assert.equal(blockedIpv6Reason("64:ff9b:1::1"), "local-use NAT64");
+    assert.equal(blockedIpv6Reason("2001:0:4136:e378::1"), "Teredo tunnel");
+    assert.equal(blockedIpv6Reason("2001:db8::1"), "documentation range");
+    assert.equal(blockedIpv6Reason("100::1"), "discard-only");
+    assert.equal(blockedIpv6Reason("fec0::1"), "site-local");
+    assert.equal(blockedIpv6Reason("FE80::1"), "link-local");
+  });
+
+  it("does not over-block public neighbours", () => {
+    assert.equal(blockedIpv6Reason("2001:4860:4860::8888"), null);
+    assert.equal(blockedIpv6Reason("2003::1"), null);
+    assert.equal(blockedIpv6Reason("fbff::1"), null);
+  });
+
+  it("rejects malformed addresses", () => {
+    assert.equal(blockedIpv6Reason("1::2::3"), "malformed IPv6 address");
+    assert.equal(blockedIpv6Reason("1:2:3"), "malformed IPv6 address");
+    assert.equal(blockedIpv6Reason("::ffff:999.0.0.1"), "malformed IPv6 address");
+  });
+});
+
+// End to end through the URL parser, which is what delivery actually uses. IP
+// literals never reach DNS, so these run without a network.
+describe("assertDeliverableUrl with IP literals", () => {
+  const blocked = [
+    "http://[::ffff:127.0.0.1]/",
+    "http://[::ffff:169.254.169.254]/latest/meta-data/",
+    "http://[::127.0.0.1]/",
+    "http://[64:ff9b::127.0.0.1]/",
+    "http://[2002:7f00:1::]/",
+    "http://[::1]:5001/api",
+    "http://[fd00::1]/",
+    "http://2130706433/",
+    "http://0x7f.1/",
+    "http://169.254.169.254/",
+  ];
+
+  for (const raw of blocked) {
+    it(`blocks ${raw}`, async () => {
+      await assert.rejects(assertDeliverableUrl(raw), BlockedUrlError);
+    });
+  }
+
+  it("allows public literals", async () => {
+    await assert.doesNotReject(assertDeliverableUrl("https://8.8.8.8/hook"));
+    await assert.doesNotReject(assertDeliverableUrl("https://[2606:4700:4700::1111]/hook"));
   });
 });
 

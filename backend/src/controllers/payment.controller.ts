@@ -1,13 +1,15 @@
+import { Prisma } from "@prisma/client";
 import type { Request, Response } from "express";
 import Razorpay from "razorpay";
 
 import { billingConfig } from "../config/env";
 import { prisma } from "../db/prisma";
-
-type CreateOrderBody = {
-  amount?: number;
-  currency?: string;
-};
+import {
+  LIVE_SUBSCRIPTION_STATUSES,
+  parseBillingEvent,
+  planChangeForEvent,
+  type BillingEvent,
+} from "../utils/billing.utils";
 
 const PREMIUM_PLANS = {
   monthly: { amount: 19900, currency: "INR" },
@@ -51,6 +53,19 @@ export const createSubscription = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Organization not found" });
     }
 
+    if (
+      org.razorpaySubscriptionId &&
+      org.subscriptionStatus &&
+      LIVE_SUBSCRIPTION_STATUSES.has(org.subscriptionStatus)
+    ) {
+      return res.status(409).json({
+        message: org.cancelAtPeriodEnd
+          ? "Your current subscription is still running until the end of its period. You can subscribe again after it ends."
+          : "Your organisation already has an active subscription.",
+        code: "SUBSCRIPTION_EXISTS",
+      });
+    }
+
     let razorpayCustomerId = org.razorpayCustomerId;
     const razorpay = getRazorpayClient(billingConfig);
 
@@ -69,17 +84,28 @@ export const createSubscription = async (req: Request, res: Response) => {
     }
 
     const planName = `forma_premium_${selectedPlan}`;
+    const period = selectedPlan === "monthly" ? "monthly" : "yearly";
     let planEntity;
     try {
       const plans = await razorpay.plans.all({ count: 100 });
-      planEntity = plans.items.find((p: any) => p.item?.name === planName);
+      // Match on the price too, not just the name. The price is what the
+      // customer pays, so a plan left over at an old or edited price must
+      // never be reused.
+      planEntity = plans.items.find(
+        (p: any) =>
+          p.item?.name === planName &&
+          p.item?.amount === planConfig.amount &&
+          p.item?.currency === planConfig.currency &&
+          p.period === period &&
+          p.interval === 1
+      );
     } catch (error) {
       console.error("Failed to list plans", error);
     }
 
     if (!planEntity) {
       planEntity = await razorpay.plans.create({
-        period: selectedPlan === "monthly" ? "monthly" : "yearly",
+        period,
         interval: 1,
         item: {
           name: planName,
@@ -87,7 +113,6 @@ export const createSubscription = async (req: Request, res: Response) => {
           currency: planConfig.currency,
           description: `Forma Premium - ${selectedPlan}`,
         },
-        notes: { orgId: org.id },
       } as any);
     }
 
@@ -104,6 +129,7 @@ export const createSubscription = async (req: Request, res: Response) => {
       data: {
         razorpaySubscriptionId: subscription.id,
         subscriptionStatus: "created",
+        cancelAtPeriodEnd: false,
       },
     });
 
@@ -132,56 +158,78 @@ export const createSubscription = async (req: Request, res: Response) => {
   }
 };
 
-export const createOrder = async (req: Request, res: Response) => {
+/**
+ * Applies one verified billing event, exactly once and never out of order.
+ *
+ * - The organisation is found by the event's subscription id, not by the
+ *   `notes.orgId` the subscription was created with. An event for a
+ *   subscription the org has since replaced then changes nothing.
+ * - The conditional `updateMany` only writes when this event is at least as
+ *   new as the last one applied, so a delayed `subscription.halted` cannot
+ *   downgrade an org that has renewed since. It is a single statement, so two
+ *   events racing for the same org cannot both pass the check. Events created
+ *   in the same second apply in arrival order.
+ * - The event row is written in the same transaction. A redelivery conflicts
+ *   on its primary key and rolls back everything it did.
+ */
+const recordBillingEvent = async (
+  event: BillingEvent
+): Promise<"applied" | "stale" | "ignored" | "duplicate"> => {
+  const seen = await prisma.billingEvent.findUnique({
+    where: { id: event.id },
+    select: { id: true },
+  });
+  if (seen) return "duplicate";
+
   try {
-    if (!req.user) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+    return await prisma.$transaction(async (tx) => {
+      const org = event.subscription
+        ? await tx.organization.findUnique({
+            where: { razorpaySubscriptionId: event.subscription.id },
+            select: { id: true },
+          })
+        : null;
 
-    if (!billingConfig) return billingUnavailable(res);
+      const change = planChangeForEvent(event);
+      let outcome: "applied" | "stale" | "ignored" = "ignored";
 
-    const { amount, currency } = req.body as CreateOrderBody;
-    const orderAmount = Number.isFinite(amount) ? Number(amount) : 19900;
-    const orderCurrency = currency ?? "INR";
+      if (org && change) {
+        const { count } = await tx.organization.updateMany({
+          where: {
+            id: org.id,
+            OR: [
+              { billingEventAt: null },
+              { billingEventAt: { lte: event.createdAt } },
+            ],
+          },
+          data: { ...change, billingEventAt: event.createdAt },
+        });
 
-    if (orderAmount <= 0) {
-      return res.status(400).json({ message: "amount must be greater than 0" });
-    }
+        outcome = count === 1 ? "applied" : "stale";
+      }
 
-    const razorpay = getRazorpayClient(billingConfig);
+      await tx.billingEvent.create({
+        data: {
+          id: event.id,
+          orgId: org?.id ?? null,
+          type: event.type,
+          outcome,
+          eventAt: event.createdAt,
+        },
+      });
 
-    const order = await razorpay.orders.create({
-      amount: Math.round(orderAmount),
-      currency: orderCurrency,
-      receipt: `forma_${req.user.orgId}_${Date.now()}`,
-      notes: {
-        orgId: req.user.orgId,
-        userId: req.user.id,
-      },
-    });
-
-    return res.status(201).json({
-      orderId: order.id,
-      amount: order.amount,
-      currency: order.currency,
-      keyId: billingConfig.keyId,
+      return outcome;
     });
   } catch (error) {
-    const typedError = error as {
-      error?: { description?: string; reason?: string };
-      message?: string;
-    };
-    const detail =
-      typedError?.error?.description ??
-      typedError?.error?.reason ??
-      typedError?.message ??
-      "Unknown error";
+    // A concurrent delivery of the same event committed first.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return "duplicate";
+    }
 
-    console.error("createOrder failed", detail);
-    return res.status(502).json({
-      message: "Razorpay order creation failed",
-      detail,
-    });
+    throw error;
   }
 };
 
@@ -209,65 +257,21 @@ export const handleWebhook = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Invalid webhook signature" });
     }
 
-    const payload = JSON.parse(body) as {
-      event?: string;
-      payload?: {
-        payment?: { entity?: { notes?: { orgId?: string } } };
-        order?: { entity?: { notes?: { orgId?: string } } };
-        subscription?: { entity?: { notes?: { orgId?: string }; status?: string; current_end?: number } };
-      };
-    };
+    const eventIdHeader = req.headers["x-razorpay-event-id"];
+    const event = parseBillingEvent(
+      body,
+      typeof eventIdHeader === "string" ? eventIdHeader : undefined
+    );
 
-    const event = payload.event;
-    const orgId =
-      payload.payload?.payment?.entity?.notes?.orgId ??
-      payload.payload?.order?.entity?.notes?.orgId ??
-      payload.payload?.subscription?.entity?.notes?.orgId;
-
-    if (!orgId) {
-      return res.json({ received: true, reason: "orgId not found" });
+    if (!event) {
+      return res.status(400).json({ message: "Malformed webhook payload" });
     }
 
-    if (event === "subscription.activated" || event === "subscription.charged") {
-      const subscriptionEntity = payload.payload?.subscription?.entity;
-      if (subscriptionEntity) {
-        const updateData: any = {
-          tier: "PREMIUM",
-          subscriptionStatus: subscriptionEntity.status ?? "active",
-        };
-        if (subscriptionEntity.current_end) {
-          updateData.currentPeriodEnd = new Date(
-            subscriptionEntity.current_end * 1000
-          );
-        }
-        await prisma.organization.update({
-          where: { id: orgId },
-          data: updateData,
-        });
-      }
-      return res.json({ received: true });
-    }
+    const outcome = await recordBillingEvent(event);
 
-    if (event === "subscription.cancelled" || event === "subscription.halted") {
-      await prisma.organization.update({
-        where: { id: orgId },
-        data: {
-          tier: "FREE",
-          subscriptionStatus: "cancelled",
-        },
-      });
-      return res.json({ received: true });
-    }
-
-    if (event === "payment.captured" || event === "order.paid") {
-      await prisma.organization.update({
-        where: { id: orgId },
-        data: { tier: "PREMIUM" },
-      });
-    }
-
-    return res.json({ received: true });
+    return res.json({ received: true, outcome });
   } catch (error) {
+    // A 500 makes Razorpay retry, which is what we want: nothing was recorded.
     console.error("handleWebhook failed", error);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -281,7 +285,12 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
 
     const org = await prisma.organization.findUnique({
       where: { id: req.user.orgId },
-      select: { tier: true, subscriptionStatus: true, currentPeriodEnd: true },
+      select: {
+        tier: true,
+        subscriptionStatus: true,
+        currentPeriodEnd: true,
+        cancelAtPeriodEnd: true,
+      },
     });
 
     if (!org) {
@@ -292,6 +301,7 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       tier: org.tier,
       status: org.subscriptionStatus,
       currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
+      cancelAtPeriodEnd: org.cancelAtPeriodEnd,
     });
   } catch (error) {
     console.error("getSubscriptionStatus failed", error);
@@ -311,22 +321,62 @@ export const cancelSubscription = async (req: Request, res: Response) => {
       where: { id: req.user.orgId },
     });
 
-    if (!org || !org.razorpaySubscriptionId) {
+    const status = org?.subscriptionStatus ?? null;
+
+    // A halted subscription is still a mandate Razorpay can resume, and one
+    // left at `created` is an abandoned checkout — both are worth cancelling.
+    const cancellable =
+      status !== null &&
+      (LIVE_SUBSCRIPTION_STATUSES.has(status) || status === "created" || status === "halted");
+
+    if (!org?.razorpaySubscriptionId || !cancellable) {
       return res.status(404).json({ message: "No active subscription found" });
     }
 
     const razorpay = getRazorpayClient(billingConfig);
-    await razorpay.subscriptions.cancel(org.razorpaySubscriptionId);
+
+    // The customer has paid for the current period, so an active subscription
+    // runs to the end of it. Razorpay stops renewing it and sends
+    // `subscription.cancelled` when the period ends, which is what downgrades.
+    if (status === "active") {
+      if (org.cancelAtPeriodEnd) {
+        return res.json({
+          message: "Subscription is already set to cancel at the end of the period",
+          cancelAtPeriodEnd: true,
+          currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
+        });
+      }
+
+      await razorpay.subscriptions.cancel(org.razorpaySubscriptionId, true);
+
+      await prisma.organization.update({
+        where: { id: org.id },
+        data: { cancelAtPeriodEnd: true },
+      });
+
+      return res.json({
+        message: "Subscription will cancel at the end of the current period",
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
+      });
+    }
+
+    // Not paid up (never charged, or renewal failing): nothing is left to run
+    // out, so cancel now. Stamping billingEventAt makes any older Razorpay
+    // event still in flight for this subscription arrive as stale.
+    await razorpay.subscriptions.cancel(org.razorpaySubscriptionId, false);
 
     await prisma.organization.update({
       where: { id: org.id },
       data: {
         tier: "FREE",
         subscriptionStatus: "cancelled",
+        cancelAtPeriodEnd: false,
+        billingEventAt: new Date(),
       },
     });
 
-    return res.json({ message: "Subscription cancelled" });
+    return res.json({ message: "Subscription cancelled", cancelAtPeriodEnd: false });
   } catch (error) {
     const typedError = error as {
       error?: { description?: string; reason?: string };

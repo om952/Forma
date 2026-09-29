@@ -20,6 +20,7 @@ export const TENANT_MODELS = new Set([
   "Webhook",
   "User",
   "WebhookDeadLetter",
+  "BillingEvent",
 ]);
 
 /**

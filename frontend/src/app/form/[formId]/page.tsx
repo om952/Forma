@@ -16,6 +16,10 @@ type FormResponse = {
 
 type FileMap = Record<string, File>;
 
+// Mirrors the server's allowlist (backend/src/utils/fileType.ts). A hint for
+// the file picker only — the server checks the file's bytes regardless.
+const UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.xlsx,.txt,.csv";
+
 export default function PublicFormPage() {
   const params = useParams<{ formId?: string }>();
   const formId = typeof params.formId === "string" ? params.formId : "";
@@ -54,37 +58,37 @@ export default function PublicFormPage() {
     fetchForm();
   }, [formId]);
 
-  const uploadFile = async (file: File): Promise<string | null> => {
-    try {
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result?.toString().split(",")[1] ?? "");
-        reader.readAsDataURL(file);
-      });
+  // Returns the stored file's URL, or throws with a message the respondent can
+  // act on (e.g. the server refusing the file type).
+  const uploadFile = async (file: File): Promise<string> => {
+    const base64 = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result?.toString().split(",")[1] ?? "");
+      reader.readAsDataURL(file);
+    });
 
-      // No auth header: respondents are anonymous. The endpoint authorises the
-      // upload by checking the form itself is real and accepting submissions.
-      const response = await apiFetch("/api/uploads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          formId,
-          fileName: file.name,
-          fileData: base64,
-          fileType: file.type,
-        }),
-      });
+    // No auth header: respondents are anonymous. The endpoint authorises the
+    // upload by checking the form itself is real and accepting submissions.
+    // No file type is sent: the server reads it from the bytes.
+    const response = await apiFetch("/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        formId,
+        fileName: file.name,
+        fileData: base64,
+      }),
+    }).catch(() => null);
 
-      if (!response.ok) {
-        throw new Error("File upload failed");
-      }
-
-      const result = (await response.json()) as { fileUrl: string };
-      return result.fileUrl;
-    } catch (error) {
-      console.error(error);
-      return null;
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => ({}));
+      throw new Error(
+        `Could not upload "${file.name}". ${body?.message ?? "Please try again."}`
+      );
     }
+
+    const result = (await response.json()) as { fileUrl: string };
+    return result.fileUrl;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -98,11 +102,7 @@ export default function PublicFormPage() {
       // Fail loudly: silently submitting the filename would look like success
       // while losing the file for good.
       for (const [fieldId, file] of Object.entries(files)) {
-        const fileUrl = await uploadFile(file);
-        if (!fileUrl) {
-          throw new Error(`Could not upload "${file.name}". Please try again.`);
-        }
-        payload[fieldId] = fileUrl;
+        payload[fieldId] = await uploadFile(file);
       }
 
       const response = await apiFetch(`/api/responses/${formId}`, {
@@ -273,6 +273,7 @@ export default function PublicFormPage() {
                 {field.type === "file" ? (
                   <input
                     type="file"
+                    accept={UPLOAD_ACCEPT}
                     required={field.required}
                     className="input"
                     onChange={(e) => {

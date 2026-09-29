@@ -26,6 +26,11 @@ model Organization {
   razorpaySubscriptionId String? @unique
   subscriptionStatus String?  // active, cancelled, past_due, etc.
   currentPeriodEnd   DateTime?
+  // Cancelled by the customer but paid up until currentPeriodEnd.
+  cancelAtPeriodEnd  Boolean   @default(false)
+  // Razorpay created_at of the newest billing event applied. An event older
+  // than this arrived out of order and must not overwrite newer state.
+  billingEventAt     DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -34,6 +39,7 @@ model Organization {
   webhooks  Webhook[]
   responses Response[]
   webhookDeadLetters WebhookDeadLetter[]
+  billingEvents      BillingEvent[]
 }
 
 model User {
@@ -125,4 +131,20 @@ model WebhookDeadLetter {
   @@index([orgId])
   @@index([formId])
   @@index([webhookId])
+}
+
+/// Every verified Razorpay webhook, keyed by Razorpay's event id. Razorpay
+/// delivers at least once, so this is what turns a redelivery into a no-op.
+model BillingEvent {
+  id         String   @id
+  orgId      String?
+  type       String
+  // applied, stale (older than state already applied) or ignored.
+  outcome    String
+  eventAt    DateTime
+  receivedAt DateTime @default(now())
+
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
 }
