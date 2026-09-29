@@ -4,7 +4,9 @@
 #   deploy/smoke-test.sh [base-url]        # default http://localhost:8080
 #
 # Signs up a new organization, builds a form, uploads a file, submits a
-# response and reads it back. Each run leaves that test data behind, so point it
+# response and reads it back, then invites a teammate who accepts (when email
+# is off, so the invite link comes back to the caller). Each run leaves that
+# test data behind, so point it
 # at a throwaway stack (CI, or a local docker-compose.prod.yaml), not production.
 # Needs only bash and curl.
 
@@ -89,5 +91,28 @@ responses="$(request GET "/api/responses/$form_id" 200 "${auth[@]}")"
 csv="$(request GET "/api/responses/$form_id/export" 200 "${auth[@]}")"
 [[ "$csv" == *Ada* ]] || fail "response not in CSV export: $csv"
 echo "response stored, listed and exported"
+
+step "Team"
+me="$(request GET /api/auth/me 200 "${auth[@]}")"
+[[ "$me" == *'"role":"OWNER"'* ]] || fail "/api/auth/me: $me"
+teammate="teammate-$org@example.com"
+invite="$(request POST /api/org/invites 201 "${auth[@]}" \
+  -H 'content-type: application/json' \
+  -d "{\"email\":\"$teammate\",\"role\":\"MEMBER\"}")"
+invite_url="$(json_field inviteUrl <<<"$invite")"
+if [[ -z "$invite_url" ]]; then
+  # Email is configured, so the link went to an inbox this script can't read.
+  echo "invite emailed to $teammate (accept step skipped)"
+else
+  member_token="$(request POST /api/invites/accept 201 \
+    -H 'content-type: application/json' \
+    -d "{\"token\":\"${invite_url#*#}\",\"password\":\"Smoke-member-$RANDOM-pass\"}" \
+    | json_field token)"
+  [[ -n "$member_token" ]] || fail "accepting the invite returned no token"
+  members="$(request GET /api/org/members 200 "${auth[@]}")"
+  [[ "$members" == *"$teammate"* ]] || fail "new member not listed: $members"
+  request GET /api/org/invites 403 -H "authorization: Bearer $member_token" >/dev/null
+  echo "invited and added $teammate; members can't see invitations"
+fi
 
 printf '\nSmoke test passed against %s\n' "$BASE"

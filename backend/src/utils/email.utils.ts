@@ -89,3 +89,100 @@ export function buildRespondentConfirmationEmail(input: {
     text: `Thanks! We've received your response to "${formName}".`,
   };
 }
+
+const button = (url: string, label: string) => `
+  <p style="margin-top:24px">
+    <a href="${escapeHtml(url)}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px">${escapeHtml(label)}</a>
+  </p>
+  <p style="font-size:12px;color:#64748b">Or paste this link into your browser:<br><span style="word-break:break-all">${escapeHtml(url)}</span></p>
+`;
+
+const ROLE_LABELS: Record<string, string> = {
+  OWNER: "an owner",
+  ADMIN: "an admin",
+  MEMBER: "a member",
+};
+
+/** Organization and inviter names are user-supplied, so they are escaped too. */
+export function buildInviteEmail(input: {
+  orgName: string;
+  inviterEmail: string | null;
+  role: string;
+  url: string;
+}): EmailContent {
+  const { orgName, inviterEmail, role, url } = input;
+  const roleLabel = ROLE_LABELS[role] ?? "a member";
+  const who = inviterEmail ?? "Someone";
+
+  const html = shell(`
+    <h2 style="margin:0 0 4px;font-size:18px">Join ${escapeHtml(orgName)} on Forma</h2>
+    <p style="margin:0;color:#64748b">
+      ${escapeHtml(who)} invited you to join <strong>${escapeHtml(orgName)}</strong> as ${roleLabel}.
+    </p>
+    ${button(url, "Accept invitation")}
+    <p style="font-size:12px;color:#94a3b8">The invitation expires in 7 days. If you weren't expecting it, you can ignore this email.</p>
+  `);
+
+  return {
+    subject: `You're invited to join ${orgName} on Forma`,
+    html,
+    text: [
+      `${who} invited you to join ${orgName} on Forma as ${roleLabel}.`,
+      "",
+      `Accept the invitation: ${url}`,
+      "",
+      "The invitation expires in 7 days. If you weren't expecting it, you can ignore this email.",
+    ].join("\n"),
+  };
+}
+
+export function buildPasswordResetEmail(input: {
+  orgName: string;
+  url: string;
+}): EmailContent {
+  const { orgName, url } = input;
+
+  const html = shell(`
+    <h2 style="margin:0 0 4px;font-size:18px">Reset your password</h2>
+    <p style="margin:0;color:#64748b">
+      Someone asked to reset the password for your <strong>${escapeHtml(orgName)}</strong> account on Forma.
+    </p>
+    ${button(url, "Choose a new password")}
+    <p style="font-size:12px;color:#94a3b8">The link expires in 1 hour and works once. If you didn't ask for this, ignore this email; your password stays the same.</p>
+  `);
+
+  return {
+    subject: `Reset your Forma password (${orgName})`,
+    html,
+    text: [
+      `Someone asked to reset the password for your ${orgName} account on Forma.`,
+      "",
+      `Choose a new password: ${url}`,
+      "",
+      "The link expires in 1 hour and works once. If you didn't ask for this, ignore this email; your password stays the same.",
+    ].join("\n"),
+  };
+}
+
+export function buildEmailVerificationEmail(input: { url: string }): EmailContent {
+  const { url } = input;
+
+  const html = shell(`
+    <h2 style="margin:0 0 4px;font-size:18px">Confirm your email address</h2>
+    <p style="margin:0;color:#64748b">Confirm this address so Forma can reach you about your account.</p>
+    ${button(url, "Confirm email")}
+    <p style="font-size:12px;color:#94a3b8">The link expires in 24 hours.</p>
+  `);
+
+  return {
+    subject: "Confirm your email for Forma",
+    html,
+    text: [
+      "Confirm this address so Forma can reach you about your account.",
+      "",
+      `Confirm email: ${url}`,
+      "",
+      "The link expires in 24 hours.",
+    ].join("\n"),
+  };
+}

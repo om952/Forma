@@ -5,6 +5,8 @@ Forma is a multi-tenant B2B SaaS form builder with authentication, org-scoped da
 ## What the platform does
 
 - **Authentication + org isolation**: Users sign up/login and operate inside an organization. Every request is scoped to `orgId` for strict data isolation.
+- **Teams and roles (RBAC)**: Owners and admins invite people by email at a role (`OWNER`, `ADMIN`, `MEMBER`). Owners change roles, admins remove members, and an organization always keeps at least one owner. Billing, webhooks and form deletion are limited to owners and admins.
+- **Account security**: Password reset and email confirmation by one-time emailed links, password change, and "sign out of all devices". Sessions are revoked when a password changes or a member is removed.
 - **Form builder**: Authenticated users build forms with a drag-and-drop style builder (text/select/file fields) and save schemas to the backend.
 - **Public submissions**: Forms can be submitted publicly without JWT. Submissions are stored as responses tied to the form and org.
 - **Webhook engine**: Each submission can trigger one or more webhooks through BullMQ + Redis, with retries and backoff. Deliveries that exhaust every retry land in a dead-letter table and can be inspected and replayed from the UI.
@@ -46,7 +48,13 @@ Forma is a multi-tenant B2B SaaS form builder with authentication, org-scoped da
 ### 1) Signup / Login
 - `POST /api/auth/signup`
 - `POST /api/auth/login`
-Returns a JWT that includes `userId` and `orgId`.
+- `GET /api/auth/me` (JWT required)
+Returns a JWT that includes `userId`, `orgId` and the user's token version.
+The same email can have an account in several organizations; if one password
+opens more than one, login asks for the organization name.
+
+Every authenticated request re-reads the user, so a role change applies on
+their next request, and a token whose version is stale is refused.
 
 ### 2) Create a form
 - `POST /api/forms` (JWT required)
@@ -65,9 +73,39 @@ Stores the response and queues webhooks.
 Returns total responses and a 7-day daily series.
 
 ### 6) Payments and upgrade
-- `POST /api/payments/create-order` (JWT required)
-- `POST /api/payments/webhook` (Razorpay)
-On successful payment, org tier is upgraded to PREMIUM.
+- `POST /api/payments/create-subscription` (owner or admin)
+- `POST /api/payments/cancel-subscription` (owner or admin)
+- `GET /api/payments/status`
+- `POST /api/payments/webhook` (Razorpay, HMAC-verified)
+Subscription events from Razorpay move the org between FREE and PREMIUM. Each
+event is recorded once, and one older than the state already applied is
+ignored.
+
+### 7) Team and invitations
+- `GET /api/org/members` (any member)
+- `PATCH /api/org/members/:userId` (owner): change role
+- `DELETE /api/org/members/:userId` (owner, or admin for members): deletes
+  the account; forms they created pass to whoever removed them
+- `GET|POST /api/org/invites`, `DELETE /api/org/invites/:inviteId` (owner or
+  admin)
+- `POST /api/invites/lookup`, `POST /api/invites/accept` (public, token in the
+  body)
+
+Invitations expire after 7 days and work once. Re-inviting the same address
+replaces the pending invitation. When email isn't configured, creating an
+invitation returns the link for the inviter to share instead.
+
+### 8) Account security
+- `POST /api/auth/forgot-password`, `POST /api/auth/reset-password`
+- `POST /api/auth/verify-email`, `POST /api/auth/resend-verification`
+- `POST /api/auth/change-password`, `POST /api/auth/logout-all`
+
+Emailed links carry their token in the URL fragment (`/reset-password#…`), so
+it never reaches a server log, and the page posts it to the API. Only a
+SHA-256 of each token is stored. Reset links last 1 hour, confirmation links 24
+hours, and both work once. Resetting or changing a password signs out every
+other session. Email confirmation is a soft gate: unconfirmed accounts work
+and see a reminder.
 
 ## Local setup
 
@@ -93,11 +131,13 @@ cp .env.example .env
 `backend/.env.example` documents every setting. Its defaults work locally
 as they are.
 
-**Email notifications are optional.** With `RESEND_API_KEY` unset, the
-notification worker drains its queue and logs a warning instead of sending —
-submissions, webhooks, and everything else work normally. Set the key to turn
-emails on; no code change needed. `EMAIL_FROM` defaults to Resend's sandbox
-sender, which works without verifying a domain.
+**Email is optional locally.** With `RESEND_API_KEY` unset, the notification
+worker drains its queue instead of sending. Submissions, webhooks and
+everything else work normally. Invitations return their link to the inviter.
+In development the worker logs the confirmation and password-reset links it
+would have sent, so you can follow them. Set the key to turn email on; no code
+change is needed. `EMAIL_FROM` defaults to Resend's sandbox sender, which works
+without verifying a domain. In production, password reset needs email.
 
 Run migrations:
 

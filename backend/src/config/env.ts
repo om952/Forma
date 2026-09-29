@@ -236,6 +236,12 @@ export const billingConfig =
       }
     : null;
 
+/**
+ * Whether email can actually be sent. Without it, invite links are handed to
+ * the inviter to share, and password reset cannot work.
+ */
+export const emailEnabled = Boolean(env.RESEND_API_KEY);
+
 export const runWorkersInApi = env.RUN_WORKERS_IN_API ?? env.NODE_ENV === "development";
 
 /** Origin used in links to uploaded files. */
@@ -251,7 +257,7 @@ export const configWarnings: string[] = [
     : "RAZORPAY_* is not set — billing and plan upgrades are disabled.",
   env.RESEND_API_KEY
     ? null
-    : "RESEND_API_KEY is not set — submission emails will be skipped.",
+    : "RESEND_API_KEY is not set — no email is sent: submission notifications and email verification are skipped, invite links must be shared by hand, and password reset does not work.",
   isProduction && !env.TRUST_PROXY
     ? "TRUST_PROXY is not set — if this runs behind a proxy, rate limits will key on the proxy's IP and apply to all users at once."
     : null,

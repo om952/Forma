@@ -20,36 +20,44 @@ not carried over from the stale June 2025 plan.
 
 ---
 
-## Phase 2: Org & Account Management (RBAC becomes real)
+## Phase 2: Org & Account Management (RBAC becomes real) — DONE 2026-09-29
 
-**Goal:** `OrgRole` (`OWNER`/`ADMIN`/`MEMBER`) already exists in the schema and
-is enforced on several routes, but signup always creates a brand-new org with
-the signer as `OWNER` — there is no way to add a second user to an org, so
-`ADMIN`/`MEMBER` can never exist and RBAC is unreachable in practice.
+**Goal:** `OrgRole` (`OWNER`/`ADMIN`/`MEMBER`) already existed and was enforced
+on several routes, but signup always created a new org with the signer as
+`OWNER`, so `ADMIN`/`MEMBER` could never exist.
 
-- [ ] `POST /api/org/invites` (OWNER/ADMIN) — create an invite (email + role),
-      send it via the existing Resend integration.
-- [ ] `POST /api/org/invites/:token/accept` — creates the user in that org
-      with the invited role, or attaches an existing account.
-- [ ] `GET /api/org/members`, `PATCH /api/org/members/:id` (role change),
-      `DELETE /api/org/members/:id` (OWNER/ADMIN only; an OWNER can't remove
-      the last OWNER).
-- [ ] `GET /api/auth/me` — current user + org + role, so the frontend stops
-      trusting whatever it decoded from the JWT client-side.
-- [ ] Frontend: an org settings / members page using the above.
-- [ ] Password reset: `POST /api/auth/forgot-password`,
-      `POST /api/auth/reset-password/:token`, emailed via Resend, tokens
-      hashed at rest and short-lived.
-- [ ] Email verification on signup (soft gate — unverified accounts work but
-      are flagged; don't block launch on a hard gate).
-- [ ] JWT revocation: add a `tokenVersion` on `User`, embed it in the JWT,
-      bump it on password change and on an explicit "log out everywhere."
+- [x] Invites: `GET|POST /api/org/invites`, `DELETE /api/org/invites/:id`
+      (OWNER invites ADMIN/MEMBER, ADMIN invites MEMBER; ownership only by
+      role change). Re-inviting replaces the pending invite. Emailed via
+      Resend when configured, otherwise the link is returned to the inviter.
+- [x] Accept: `POST /api/invites/lookup` and `/accept`, token in the body
+      (not the path, so it never lands in request logs). Creates the
+      invitee's account in that org. Changed from the plan: an existing
+      account elsewhere is not "attached" — users are per-org, so the
+      invitee gets a separate account in the new org, and login asks for the
+      org name when one password opens several.
+- [x] Members: `GET /api/org/members`, `PATCH` (role, OWNER only),
+      `DELETE` (OWNER, or ADMIN for MEMBERs). Last owner protected by a row
+      lock on the org's OWNER rows. Removed users' forms pass to the remover.
+- [x] `GET /api/auth/me`; the frontend refreshes its stored user from it on
+      every page and signs out on 401.
+- [x] Frontend: `/team`, `/account`, `/invite`, `/forgot-password`,
+      `/reset-password`, `/verify-email`, header Team link and
+      unconfirmed-email banner.
+- [x] Password reset (1 h, single-use, SHA-256 stored, fragment links,
+      60 s per-user cooldown, no account enumeration).
+- [x] Email verification, soft gate (24 h links). Emailed invites count as
+      confirmation; hand-shared invite links do not.
+- [x] JWT revocation via `User.tokenVersion` (bumped on password change or
+      reset and "sign out everywhere"); JWT algorithm pinned to HS256.
 
-**Deliverable:** A second person can be invited into an org at a role other
-than OWNER, and RBAC checks are exercised by more than one account.
-**Effort:** ~5–6 days.
-**Review point:** Security review of the invite-accept and password-reset
-token handling before merging (token reuse, expiry, enumeration).
+**Verified:** 115 backend unit tests; 74 API checks and 24 headless-browser
+checks against a dev stack; the production Docker stack's smoke test now
+invites and adds a teammate.
+
+**Carry-over for Phase 4:** the auth rate limiter allows 10 failed attempts
+per IP per 15 minutes; a Selenium suite running many negative scenarios from
+one IP will need a test-only override.
 
 ---
 

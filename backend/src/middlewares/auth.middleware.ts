@@ -1,18 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
-import * as jwt from "jsonwebtoken";
 
-import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import {
   createScopedPrismaClient,
   type ScopedPrismaClient,
 } from "../db/scopedPrisma";
-
-type AuthPayload = {
-  userId: string;
-  orgId: string;
-  role: string;
-};
+import { verifySessionToken } from "../services/session";
 
 export type AuthUser = {
   id: string;
@@ -51,7 +44,7 @@ export const authMiddleware = async (
   const token = authHeader.slice("Bearer ".length).trim();
 
   try {
-    const decoded = jwt.verify(token, env.JWT_SECRET) as AuthPayload;
+    const decoded = verifySessionToken(token);
 
     if (!decoded?.userId || !decoded?.orgId || !decoded?.role) {
       return res.status(401).json({ message: "Invalid token" });
@@ -59,12 +52,18 @@ export const authMiddleware = async (
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, orgId: true, email: true, role: true },
+      select: { id: true, orgId: true, email: true, role: true, tokenVersion: true },
     });
 
-    if (!user) {
+    // A deleted user (removed from their org) and a token issued before the
+    // user's last password change or "sign out everywhere" are both refused.
+    // Tokens from before versioning existed carry no `tv` and count as 0.
+    if (!user || (decoded.tv ?? 0) !== user.tokenVersion) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
+
+    // The role comes from the database, not the token, so a role change takes
+    // effect on the user's next request.
 
     req.user = { id: user.id, orgId: user.orgId, email: user.email, role: user.role };
     req.db = createScopedPrismaClient(user.orgId);

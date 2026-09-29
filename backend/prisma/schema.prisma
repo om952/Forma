@@ -17,43 +17,57 @@ enum OrgTier {
   PREMIUM
 }
 
+enum AuthTokenPurpose {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+}
+
 model Organization {
-  id                String    @id @default(cuid())
-  name              String
-  slug              String    @unique
-  tier              OrgTier   @default(FREE)
-  razorpayCustomerId String?  @unique
-  razorpaySubscriptionId String? @unique
-  subscriptionStatus String?  // active, cancelled, past_due, etc.
-  currentPeriodEnd   DateTime?
+  id                     String    @id @default(cuid())
+  name                   String
+  slug                   String    @unique
+  tier                   OrgTier   @default(FREE)
+  razorpayCustomerId     String?   @unique
+  razorpaySubscriptionId String?   @unique
+  subscriptionStatus     String? // active, cancelled, past_due, etc.
+  currentPeriodEnd       DateTime?
   // Cancelled by the customer but paid up until currentPeriodEnd.
-  cancelAtPeriodEnd  Boolean   @default(false)
+  cancelAtPeriodEnd      Boolean   @default(false)
   // Razorpay created_at of the newest billing event applied. An event older
   // than this arrived out of order and must not overwrite newer state.
-  billingEventAt     DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  billingEventAt         DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  users     User[]
-  forms     Form[]
-  webhooks  Webhook[]
-  responses Response[]
+  users              User[]
+  forms              Form[]
+  webhooks           Webhook[]
+  responses          Response[]
   webhookDeadLetters WebhookDeadLetter[]
   billingEvents      BillingEvent[]
+  invites            Invite[]
 }
 
 model User {
-  id           String   @id @default(cuid())
-  orgId        String
-  email        String
-  name         String?
-  role         OrgRole  @default(MEMBER)
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(cuid())
+  orgId           String
+  email           String
+  name            String?
+  role            OrgRole   @default(MEMBER)
+  passwordHash    String
+  // Null until the address is confirmed. A soft gate: unverified accounts work
+  // but are prompted to verify.
+  emailVerifiedAt DateTime?
+  // Session tokens carry the version they were issued at. Bumping this signs
+  // the user out everywhere (password change or reset, "sign out everywhere").
+  tokenVersion    Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   forms        Form[]       @relation("UserForms")
+  authTokens   AuthToken[]
+  invitesSent  Invite[]     @relation("InvitesSent")
 
   @@unique([orgId, email])
   @@index([orgId])
@@ -70,10 +84,10 @@ model Form {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  createdBy    User         @relation("UserForms", fields: [createdById], references: [id])
-  webhooks     Webhook[]
-  responses    Response[]
+  organization       Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy          User                @relation("UserForms", fields: [createdById], references: [id])
+  webhooks           Webhook[]
+  responses          Response[]
   webhookDeadLetters WebhookDeadLetter[]
 
   @@index([orgId])
@@ -89,8 +103,8 @@ model Webhook {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  form         Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  organization Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  form         Form                @relation(fields: [formId], references: [id], onDelete: Cascade)
   deadLetters  WebhookDeadLetter[]
 
   @@unique([formId, url])
@@ -147,4 +161,45 @@ model BillingEvent {
   organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
 
   @@index([orgId])
+}
+
+/// One-time links emailed to an existing user: password reset and email
+/// verification. Only a SHA-256 of the token is stored, so a database leak does
+/// not hand out working links.
+model AuthToken {
+  id        String           @id @default(cuid())
+  userId    String
+  purpose   AuthTokenPurpose
+  tokenHash String           @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+}
+
+/// An invitation to join an organization at a given role. Accepting it creates
+/// the user's account in that organization. As with AuthToken, only the token's
+/// hash is stored.
+model Invite {
+  id          String    @id @default(cuid())
+  orgId       String
+  email       String
+  role        OrgRole
+  tokenHash   String    @unique
+  invitedById String?
+  // Set when the link went out by email rather than being handed to the
+  // inviter to share. Only then does accepting it prove the invitee owns the
+  // address.
+  emailedAt   DateTime?
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("InvitesSent", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([orgId, email])
 }

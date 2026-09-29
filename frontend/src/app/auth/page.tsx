@@ -192,6 +192,15 @@ export default function AuthPage() {
             />
           </label>
 
+          {mode === "login" ? (
+            <Link
+              href="/forgot-password"
+              className="-mt-3 inline-block text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+            >
+              Forgot password?
+            </Link>
+          ) : null}
+
           <label className="label block">
             Organization name
             <input

@@ -9,7 +9,10 @@ import {
 } from "../queues/notification.queue";
 import { redisConnection } from "../queues/redis";
 import {
+  buildEmailVerificationEmail,
+  buildInviteEmail,
   buildOwnerNotificationEmail,
+  buildPasswordResetEmail,
   buildRespondentConfirmationEmail,
   type EmailContent,
 } from "../utils/email.utils";
@@ -28,11 +31,40 @@ const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
 const log = logger.child({ worker: "notification" });
 
+const buildContent = (data: NotificationJobData): EmailContent => {
+  switch (data.kind) {
+    case "owner":
+      return buildOwnerNotificationEmail({
+        formName: data.formName,
+        fields: data.fields,
+        responsesUrl: `${frontendUrl}/responses/${data.formId}`,
+      });
+    case "respondent":
+      return buildRespondentConfirmationEmail({ formName: data.formName });
+    case "invite":
+      return buildInviteEmail(data);
+    case "password-reset":
+      return buildPasswordResetEmail(data);
+    case "verify-email":
+      return buildEmailVerificationEmail(data);
+  }
+};
+
 export const createNotificationWorker = () => {
   const worker = new Worker<NotificationJobData>(
     notificationQueue.name,
     async (job: Job<NotificationJobData>) => {
       if (!resend) {
+        // Lets invites, resets and verification be exercised locally without
+        // an email provider. Never in production: the link is a credential.
+        if (env.NODE_ENV === "development" && "url" in job.data) {
+          log.info(
+            { kind: job.data.kind, to: job.data.to, url: job.data.url },
+            "Email is not configured; this is the link it would have carried"
+          );
+          return;
+        }
+
         log.debug(
           { kind: job.data.kind },
           "Skipping email — RESEND_API_KEY is not set"
@@ -40,19 +72,7 @@ export const createNotificationWorker = () => {
         return;
       }
 
-      let content: EmailContent;
-
-      if (job.data.kind === "owner") {
-        content = buildOwnerNotificationEmail({
-          formName: job.data.formName,
-          fields: job.data.fields,
-          responsesUrl: `${frontendUrl}/responses/${job.data.formId}`,
-        });
-      } else {
-        content = buildRespondentConfirmationEmail({
-          formName: job.data.formName,
-        });
-      }
+      const content = buildContent(job.data);
 
       const { error } = await resend.emails.send({
         from: emailFrom,
