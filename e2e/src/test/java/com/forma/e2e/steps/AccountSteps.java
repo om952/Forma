@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.forma.e2e.pages.AccountPages;
 import com.forma.e2e.pages.AppHeader;
 import com.forma.e2e.pages.AuthPage;
-import com.forma.e2e.pages.BuilderPage;
 import com.forma.e2e.pages.DashboardPage;
 import com.forma.e2e.support.Actor;
 import com.forma.e2e.support.World;
@@ -50,7 +49,7 @@ public class AccountSteps {
   @Then("they can sign in with the password {string}")
   public void theyCanSignInWith(String password) {
     new AuthPage(world).open().logIn(world.actor("owner").email(), password);
-    new BuilderPage(world).waitUntilShown();
+    new DashboardPage(world).waitUntilShown();
   }
 
   @When("they open their email confirmation link")
