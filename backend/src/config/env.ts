@@ -99,6 +99,25 @@ const schema = z
      */
     RATE_LIMIT_SCALE: z.coerce.number().int().min(1).max(10_000).default(1),
 
+    // --- Queue workers ---
+    /**
+     * Webhook deliveries each worker process runs at once. Delivery time is
+     * mostly waiting on the receiving server (up to 8s before timing out), so
+     * one at a time let a single slow endpoint hold up every organization's
+     * deliveries. The per-second limiter on the queue still caps the rate.
+     */
+    WEBHOOK_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(200).default(10),
+    /** Emails each worker process sends at once, under Resend's rate limit. */
+    NOTIFICATION_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(5),
+
+    // --- Maintenance ---
+    /**
+     * How long an anonymous form visit (FormSession) is kept before a nightly
+     * job deletes it. These exist to power the analytics funnel and drop-off,
+     * not as a permanent record, so nothing else depends on old rows.
+     */
+    FORM_SESSION_RETENTION_DAYS: z.coerce.number().int().min(1).default(180),
+
     // --- Observability ---
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])

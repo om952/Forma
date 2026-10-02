@@ -23,6 +23,7 @@ Feature: Team members and roles
     When they open the team page
     Then they see the organization's members
     But they cannot invite or remove anyone
+    And they cannot see the team's activity
 
   Scenario: A member cannot delete forms
     Given a member of an organization is signed in
@@ -41,3 +42,10 @@ Feature: Team members and roles
     When the owner removes the member
     Then the member is no longer listed
     And the member's session no longer works
+
+  Scenario: Role changes and removals are recorded in the team's activity
+    Given an organization owner is signed in
+    And their organization has a member
+    When the owner makes the member an admin
+    And the owner removes the member
+    Then the team's activity shows "Removed" first, then "from member to admin"

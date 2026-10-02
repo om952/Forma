@@ -14,7 +14,10 @@ COPY . .
 # the setup in docker-compose.prod.yaml, where a reverse proxy routes `/api` to
 # the backend. Set it only when the API lives on a different origin.
 ARG NEXT_PUBLIC_API_BASE_URL=""
+# Browser error reporting; empty leaves it off. Also inlined at build time.
+ARG NEXT_PUBLIC_SENTRY_DSN=""
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN} \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build

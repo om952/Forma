@@ -75,6 +75,26 @@ public class TeamSteps {
     assertThat(team.canRemoveAnyone()).isFalse();
   }
 
+  @Then("they cannot see the team's activity")
+  public void theyCannotSeeTheActivity() {
+    assertThat(new TeamPage(world).showsActivity()).isFalse();
+  }
+
+  @When("the owner makes the member an admin")
+  public void theOwnerMakesTheMemberAnAdmin() {
+    TeamPage team = new TeamPage(world).open();
+    team.changeRole(world.actor("member").email(), "Admin");
+    team.waitForText("is now admin.");
+  }
+
+  @Then("the team's activity shows {string} first, then {string}")
+  public void theActivityShows(String newest, String older) {
+    TeamPage team = new TeamPage(world).open();
+    team.waitForActivityCount(2);
+    assertThat(team.activity().get(0)).contains(newest).contains(world.actor("member").email());
+    assertThat(team.activity().get(1)).contains(older).contains(world.actor("owner").email());
+  }
+
   @When("they change their own role to {string}")
   public void theyChangeTheirOwnRole(String role) {
     new TeamPage(world).open().changeRole(world.actor("owner").email(), role);

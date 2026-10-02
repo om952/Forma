@@ -1,5 +1,6 @@
 import {
   createInvite,
+  listAuditLog,
   listInvites,
   listMembers,
   removeMember,
@@ -8,8 +9,10 @@ import {
 } from "../controllers/org.controller";
 import { inviteLimiter } from "../middlewares/rateLimit.middleware";
 import { changeRoleBody, createInviteBody } from "../validation/account";
-import { idParams } from "../validation/common";
+import { idParams, paginationQuery } from "../validation/common";
 import { route, type RouteSpec } from "./define";
+
+const MANAGERS = ["OWNER", "ADMIN"] as const;
 
 /*
  * The signed-in user's own organization. `access` is the coarse gate; who may
@@ -44,7 +47,7 @@ export const orgRoutes: RouteSpec[] = [
     summary: "Remove a member",
     description:
       "Deletes their account; forms they created pass to whoever removed them. Admins may remove members only, and nobody removes themselves.",
-    access: ["OWNER", "ADMIN"],
+    access: MANAGERS,
     request: { params: idParams("userId") },
     responses: {
       204: "Removed.",
@@ -58,7 +61,7 @@ export const orgRoutes: RouteSpec[] = [
     method: "get",
     path: "/invites",
     summary: "List pending invitations",
-    access: ["OWNER", "ADMIN"],
+    access: MANAGERS,
     responses: { 200: "Invitations not yet accepted or expired, newest first." },
     handler: listInvites,
   }),
@@ -68,7 +71,7 @@ export const orgRoutes: RouteSpec[] = [
     summary: "Invite someone by email",
     description:
       "Owners invite admins and members, admins invite members. Replaces any pending invitation to the same address. With email off, the response carries `inviteUrl` to share by hand.",
-    access: ["OWNER", "ADMIN"],
+    access: MANAGERS,
     middleware: [inviteLimiter],
     request: { body: createInviteBody },
     responses: {
@@ -82,9 +85,20 @@ export const orgRoutes: RouteSpec[] = [
     method: "delete",
     path: "/invites/:inviteId",
     summary: "Withdraw a pending invitation",
-    access: ["OWNER", "ADMIN"],
+    access: MANAGERS,
     request: { params: idParams("inviteId") },
     responses: { 204: "Withdrawn.", 404: "No such pending invitation." },
     handler: revokeInvite,
+  }),
+  route({
+    method: "get",
+    path: "/audit-log",
+    summary: "Sensitive actions on this organization, newest first",
+    description:
+      "Role changes, member removal, webhook create/edit/delete, and billing changes. `actorEmail` is null for a change the system made on its own, such as a Razorpay webhook moving the plan.",
+    access: MANAGERS,
+    request: { query: paginationQuery },
+    responses: { 200: "`{ items, nextCursor }`." },
+    handler: listAuditLog,
   }),
 ];

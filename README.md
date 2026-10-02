@@ -303,14 +303,77 @@ container or host.
 - `GET /health/live` reports whether the process is up. `GET /health/ready`
   also checks Postgres and Redis. It returns 503 when either is unreachable,
   or while the instance drains during shutdown.
+- `GET /health/queues` reports whether the workers are keeping up. It
+  returns 503 once a queue's oldest waiting job has waited more than 5
+  minutes, which means no worker is processing it. It's for alerting only, not
+  load balancing: a dead worker is no reason to pull a healthy API.
 - Logs are JSON lines on stdout, one per request plus app events:
   `docker compose ... logs -f api worker`. Set `LOG_LEVEL` to change verbosity.
-- Set `SENTRY_DSN` to report errors to Sentry. Images built with the
-  `APP_RELEASE` build arg tag events with that version.
+- Set `SENTRY_DSN` to report errors to Sentry from the API, the worker and the
+  web app, or `SENTRY_WEB_DSN` to send the web app's to a separate project.
+  Errors only, with no personal data: request bodies, cookies, user details,
+  query strings and URL fragments are never sent. Fragments matter because
+  invite and password-reset links carry their token there. The browser part is
+  built into the web image, so rebuild it after changing the DSN. Images built
+  with the `APP_RELEASE` build arg tag API events with that version.
+- **Audit log.** Role changes, member removals, webhook creation, edits and
+  deletion, and billing changes are recorded with who made them and when.
+  Owners and admins see them under "Recent activity" on the Team page, or at
+  `GET /api/org/audit-log`. Plan changes Razorpay makes are credited to
+  Razorpay. Recording is best-effort: a failed write is logged and never fails
+  the action itself.
+- **Housekeeping.** A nightly job at 03:00 UTC deletes anonymous form visits
+  (the analytics funnel data) older than `FORM_SESSION_RETENTION_DAYS`,
+  default 180. Analytics only look back 90 days.
 - `deploy/smoke-test.sh [base-url]` checks through the proxy that the API
   reference is served. It then signs up, builds a form, uploads a file, submits
   and reads back a response, and invites a teammate. It leaves that
   test data behind, so run it against a throwaway stack, not production.
+
+### Alerting
+
+Point an uptime monitor (Better Stack, UptimeRobot, Healthchecks.io, or your
+platform's own) at these, checking every minute and alerting after two
+failures in a row:
+
+| Check | What a failure means | First thing to look at |
+| --- | --- | --- |
+| `GET /health/ready` | The API is down, or can't reach Postgres or Redis. The response says which. | `logs api`, then the database and Redis |
+| `GET /health/queues` | Webhooks or emails have stopped going out: the worker process is down or stuck. | `logs worker`; restart it |
+| New issues in Sentry | Errors users are hitting, with stack traces | The issue itself |
+
+On a container platform, also use `/health/live` as the liveness probe (the
+platform restarts the process) and `/health/ready` as the readiness probe (it
+stops routing traffic). On one host with Docker Compose, `restart:
+unless-stopped` only restarts a container that exits, not one that is
+unhealthy, so the external monitor is what tells you. A missing webhook or
+missing email is the symptom users notice first, and `/health/queues` is
+what catches it.
+
+### Load testing
+
+`node deploy/load-test.mjs --base <api-origin>` drives the respondent path
+the way the form page does: open the form, reach two fields, submit with the
+visit id. It reports throughput, latency percentiles per step and status
+codes. Add `--webhook-url <public-url>` to also attach a webhook and report
+failed deliveries. Webhooks must be public URLs, since the app refuses local
+and private addresses. Run the target with `RATE_LIMIT_SCALE` raised, or the
+limits throttle the one machine running the test.
+
+Measured once on 30 September 2026, against one API process on a laptop:
+
+- **Respondent path:** 3,000 fills (12,000 requests), 100 at a time, ran at
+  about 2,760 requests/s with no errors. Submission latency was p50 58 ms, p95
+  79 ms, p99 120 ms, and all 3,000 responses were stored.
+- **Webhook delivery:** against an endpoint taking about 3.7 s per request,
+  each worker process delivered **0.6 webhooks/s**, because it processed one
+  job at a time. One slow endpoint therefore held up every organization's
+  deliveries. Workers now run 10 deliveries at once
+  (`WEBHOOK_WORKER_CONCURRENCY`) and 5 emails (`NOTIFICATION_WORKER_CONCURRENCY`).
+  The same test then delivered **4.6/s**, and 60 deliveries took 13 s instead
+  of 98 s. The queue's per-second limit still caps the total. Deliveries can
+  now arrive out of order, so receivers should use `submittedAt`, not arrival
+  order.
 
 ### Other platforms
 

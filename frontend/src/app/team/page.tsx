@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import ActivityLog from "../../components/ActivityLog";
 import AppHeader from "../../components/AppHeader";
 import { apiJson, errorMessage } from "../../lib/api";
 import {
@@ -389,6 +390,8 @@ export default function TeamPage() {
             ) : null}
           </div>
         )}
+
+        {token && manage ? <ActivityLog token={token} refreshKey={refreshKey} /> : null}
       </div>
     </div>
   );

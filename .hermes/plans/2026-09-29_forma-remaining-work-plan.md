@@ -130,26 +130,33 @@ Docker + browser run is first exercised by CI on push.
 
 ---
 
-## Phase 5: Observability & Operational Hardening
+## Phase 5: Observability & Operational Hardening — DONE 2026-09-30
 
-**Goal:** Phase 1 covers the basics (structured logs, `/health/ready`,
-graceful shutdown, optional Sentry). This phase is what's needed to actually
-run the thing and know when it's broken.
+- [x] Frontend Sentry (`@sentry/nextjs`): browser, Next.js server and Edge,
+      plus a `global-error.tsx` fallback page. Errors only; bodies, cookies,
+      user details, query strings and URL fragments never sent (fragments
+      carry invite/reset tokens). Verified against a local catcher: the
+      error arrives, none of those do. `SENTRY_WEB_DSN` or `SENTRY_DSN`.
+- [x] Audit log (`AuditLog` table): role changes, member removal, webhook
+      create/edit/delete, subscription start/cancel, and Razorpay-driven
+      tier changes (actor: Razorpay). Best-effort, never fails the action.
+      `GET /api/org/audit-log` (owners/admins) and "Recent activity" on the
+      Team page.
+- [x] Alerting: README table of what to monitor (`/health/ready`,
+      `/health/queues`, Sentry) and what a failure means. New
+      `/health/queues` answers 503 when a queue's oldest job has waited
+      more than 5 minutes, so a dead worker is visible (readiness can't see it).
+- [x] Load test (`deploy/load-test.mjs`): respondent path handled ~2,760
+      req/s with no errors (submit p99 120 ms). Found the bottleneck:
+      webhook worker processed one job at a time (0.6 deliveries/s against
+      a slow endpoint, blocking every tenant). Now 10 concurrent
+      (`WEBHOOK_WORKER_CONCURRENCY`), 4.6/s on the same test.
+- [x] FormSession retention: nightly BullMQ job deletes visits older than
+      `FORM_SESSION_RETENTION_DAYS` (180); schedule stays single across
+      restarts.
 
-- [ ] Confirm Sentry is wired on the frontend too, not just the backend
-      (`SENTRY_DSN` currently only appears in the backend config).
-- [ ] Audit log for sensitive actions: role changes, billing changes,
-      webhook create/edit/delete, member removal — a simple table, not a
-      new subsystem.
-- [ ] Alerting: at minimum, a documented way to get paged when
-      `/health/ready` goes red (most platforms' built-in health-check
-      alerting is enough — this is a docs/config task, not new code).
-- [ ] Load-test the submission and webhook-delivery paths once, to catch
-      an obvious bottleneck before it's a production incident.
-
-**Deliverable:** Someone other than the person who wrote the code could be
-on call for this.
-**Effort:** ~3–4 days.
+**Verified:** 161 backend unit, 35 integration, 31 frontend, 36/36 browser
+scenarios; OpenAPI 48 operations; migration matches schema.
 
 ---
 

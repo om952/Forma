@@ -6,6 +6,7 @@ import { emailEnabled } from "../config/env";
 import { prisma } from "../db/prisma";
 import { queueAccountEmail } from "../queues/notification.queue";
 import { frontendLink } from "../services/accountTokens";
+import { recordAuditLog } from "../services/auditLog";
 import { HttpError } from "../utils/httpError";
 import {
   checkInvite,
@@ -14,7 +15,9 @@ import {
   type Decision,
   type OrgRole,
 } from "../utils/orgRoles";
+import { pageArgs, pageOf } from "../utils/pagination";
 import type { changeRoleBody, createInviteBody } from "../validation/account";
+import type { Pagination } from "../validation/common";
 import { expiresIn, generateToken, hashToken, TOKEN_TTL_MS } from "../utils/tokens";
 
 const enforce = (decision: Decision) => {
@@ -73,26 +76,40 @@ export const updateMemberRole = async (req: Request, res: Response) => {
 
     const target = await tx.user.findFirst({
       where: { id: targetId, orgId: actor.orgId },
-      select: { id: true, role: true },
+      select: { id: true, email: true, role: true },
     });
 
     if (!target) throw new HttpError(404, "Member not found");
 
     enforce(checkRoleChange({ actor, target, newRole: role, ownerCount }));
 
-    return tx.user.update({
+    const updatedMember = await tx.user.update({
       where: { id: target.id },
       data: { role },
       select: memberSelect,
     });
+
+    return { updatedMember, previousRole: target.role };
   });
 
   req.log.info(
-    { targetUserId: updated.id, role: updated.role },
+    { targetUserId: updated.updatedMember.id, role: updated.updatedMember.role },
     "Member role changed"
   );
 
-  const { emailVerifiedAt, ...member } = updated;
+  await recordAuditLog({
+    orgId: actor.orgId,
+    actor: { id: actor.id, email: req.user!.email },
+    action: "member.role_changed",
+    targetId: updated.updatedMember.id,
+    metadata: {
+      targetEmail: updated.updatedMember.email,
+      from: updated.previousRole,
+      to: updated.updatedMember.role,
+    },
+  });
+
+  const { emailVerifiedAt, ...member } = updated.updatedMember;
   return res.json({ ...member, emailVerified: emailVerifiedAt !== null });
 };
 
@@ -105,27 +122,38 @@ export const removeMember = async (req: Request, res: Response) => {
   const actor = actorOf(req);
   const targetId = (req.params as { userId: string }).userId;
 
-  await prisma.$transaction(async (tx) => {
+  const target = await prisma.$transaction(async (tx) => {
     const ownerCount = await lockOwners(tx, actor.orgId);
 
-    const target = await tx.user.findFirst({
+    const targetRecord = await tx.user.findFirst({
       where: { id: targetId, orgId: actor.orgId },
-      select: { id: true, role: true },
+      select: { id: true, email: true, role: true },
     });
 
-    if (!target) throw new HttpError(404, "Member not found");
+    if (!targetRecord) throw new HttpError(404, "Member not found");
 
-    enforce(checkRemoval({ actor, target, ownerCount }));
+    enforce(checkRemoval({ actor, target: targetRecord, ownerCount }));
 
     await tx.form.updateMany({
-      where: { orgId: actor.orgId, createdById: target.id },
+      where: { orgId: actor.orgId, createdById: targetRecord.id },
       data: { createdById: actor.id },
     });
 
-    await tx.user.delete({ where: { id: target.id } });
+    await tx.user.delete({ where: { id: targetRecord.id } });
+
+    return targetRecord;
   });
 
   req.log.info({ targetUserId: targetId }, "Member removed");
+
+  await recordAuditLog({
+    orgId: actor.orgId,
+    actor: { id: actor.id, email: req.user!.email },
+    action: "member.removed",
+    targetId: target.id,
+    metadata: { targetEmail: target.email, role: target.role },
+  });
+
   return res.status(204).end();
 };
 
@@ -226,6 +254,26 @@ export const createInvite = async (req: Request, res: Response) => {
     invite: { ...details, emailed: emailEnabled, invitedBy: req.user!.email },
     ...(emailEnabled ? {} : { inviteUrl }),
   });
+};
+
+/** Sensitive actions on this organization, newest first, a page at a time. */
+export const listAuditLog = async (req: Request, res: Response) => {
+  const page = req.query as unknown as Pagination;
+
+  const rows = await req.db!.auditLog.findMany({
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...pageArgs(page),
+    select: {
+      id: true,
+      actorEmail: true,
+      action: true,
+      targetId: true,
+      metadata: true,
+      createdAt: true,
+    },
+  });
+
+  return res.json(pageOf(rows, page.limit));
 };
 
 /** Admins may withdraw invitations to MEMBER only, matching what they can send. */

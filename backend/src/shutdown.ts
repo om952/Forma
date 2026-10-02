@@ -14,6 +14,7 @@ import type { Worker } from "bullmq";
 import { prisma } from "./db/prisma";
 import { logger } from "./observability/logger";
 import { flushErrorReports } from "./observability/sentry";
+import { maintenanceQueue } from "./queues/maintenance.queue";
 import { notificationQueue } from "./queues/notification.queue";
 import { redisConnection, redisRequestConnection } from "./queues/redis";
 import { webhookQueue } from "./queues/webhook.queue";
@@ -92,6 +93,7 @@ export const registerGracefulShutdown = ({ server, workers }: ShutdownTargets) =
     await Promise.all([
       closeQuietly("webhook queue", () => webhookQueue.close()),
       closeQuietly("notification queue", () => notificationQueue.close()),
+      closeQuietly("maintenance queue", () => maintenanceQueue.close()),
     ]);
 
     // Prisma before Redis: nothing above should still need either, but the

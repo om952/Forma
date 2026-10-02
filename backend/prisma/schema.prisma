@@ -47,6 +47,7 @@ model Organization {
   billingEvents      BillingEvent[]
   invites            Invite[]
   formSessions       FormSession[]
+  auditLogEntries    AuditLog[]
 }
 
 model User {
@@ -233,4 +234,30 @@ model FormSession {
 
   @@index([formId, viewedAt])
   @@index([orgId])
+}
+
+/// A record of a sensitive action, for whoever is on call when something looks
+/// wrong: role changes, member removal, webhook create/edit/delete, and
+/// billing changes. Written best-effort — a logging failure must never fail
+/// the action it is recording, so nothing here is a foreign key the action
+/// depends on.
+///
+/// `actorId`/`actorEmail` are null for an action the system took on its own
+/// (a Razorpay webhook changing the plan): `metadata.source` says what did it.
+/// The email is stored alongside the id, not just related to `User`, because
+/// removing a member is itself something this logs — the actor or target of
+/// an older entry may no longer have an account to look up.
+model AuditLog {
+  id         String   @id @default(cuid())
+  orgId      String
+  actorId    String?
+  actorEmail String?
+  action     String
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
 }

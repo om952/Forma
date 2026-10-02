@@ -23,6 +23,7 @@ export const TENANT_MODELS = new Set([
   "BillingEvent",
   "Invite",
   "FormSession",
+  "AuditLog",
 ]);
 
 /**

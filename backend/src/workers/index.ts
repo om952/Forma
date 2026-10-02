@@ -1,5 +1,6 @@
 import type { Worker } from "bullmq";
 
+import { createMaintenanceWorker } from "./maintenance.worker";
 import { createNotificationWorker } from "./notification.worker";
 import { createWebhookWorker } from "./webhook.worker";
 
@@ -13,4 +14,5 @@ import { createWebhookWorker } from "./webhook.worker";
 export const startWorkers = (): Worker[] => [
   createWebhookWorker(),
   createNotificationWorker(),
+  createMaintenanceWorker(),
 ];

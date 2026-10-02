@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { webhookQueue } from "../queues/webhook.queue";
+import { recordAuditLog } from "../services/auditLog";
 import { pageArgs, pageOf } from "../utils/pagination";
 import type { Pagination } from "../validation/common";
 import { BlockedUrlError, assertDeliverableUrl } from "../utils/ssrf";
@@ -106,6 +107,14 @@ export const createWebhook = async (req: Request, res: Response) => {
       },
     });
 
+    await recordAuditLog({
+      orgId: req.user.orgId,
+      actor: { id: req.user.id, email: req.user.email },
+      action: "webhook.created",
+      targetId: webhook.id,
+      metadata: { formId, url },
+    });
+
     return res.status(201).json({
       ...webhook,
       type: detectPayloadType(webhook.url),
@@ -160,6 +169,18 @@ export const updateWebhook = async (req: Request, res: Response) => {
       data,
     });
 
+    await recordAuditLog({
+      orgId: req.user.orgId,
+      actor: { id: req.user.id, email: req.user.email },
+      action: "webhook.updated",
+      targetId: webhook.id,
+      metadata: {
+        formId: webhook.formId,
+        ...(data.url !== undefined ? { fromUrl: existing.url, toUrl: data.url } : {}),
+        ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      },
+    });
+
     return res.json({
       ...webhook,
       type: detectPayloadType(webhook.url),
@@ -192,6 +213,14 @@ export const deleteWebhook = async (req: Request, res: Response) => {
 
     await req.db.webhook.delete({
       where: { id: webhookId },
+    });
+
+    await recordAuditLog({
+      orgId: req.user.orgId,
+      actor: { id: req.user.id, email: req.user.email },
+      action: "webhook.deleted",
+      targetId: existing.id,
+      metadata: { formId: existing.formId, url: existing.url },
     });
 
     return res.status(204).send();
