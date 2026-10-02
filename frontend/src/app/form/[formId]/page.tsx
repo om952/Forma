@@ -256,12 +256,13 @@ export default function PublicFormPage() {
                 onFocusCapture={() => reportFieldReached(field.id)}
                 onChangeCapture={() => reportFieldReached(field.id)}
               >
-                <label className="label mb-2 block">
+                <label className="label mb-2 block" htmlFor={`q-${field.id}`}>
                   {field.label}
                   {field.required ? " *" : ""}
                 </label>
                 {field.type === "text" ? (
                   <input
+                    id={`q-${field.id}`}
                     required={field.required}
                     className="input"
                     placeholder="Type here..."
@@ -273,6 +274,7 @@ export default function PublicFormPage() {
                 ) : null}
                 {field.type === "textarea" ? (
                   <textarea
+                    id={`q-${field.id}`}
                     required={field.required}
                     className="input min-h-28"
                     placeholder="Type here..."
@@ -285,6 +287,7 @@ export default function PublicFormPage() {
                 {field.type === "email" ? (
                   <input
                     type="email"
+                    id={`q-${field.id}`}
                     required={field.required}
                     className="input"
                     placeholder="name@example.com"
@@ -297,6 +300,7 @@ export default function PublicFormPage() {
                 {field.type === "number" ? (
                   <input
                     type="number"
+                    id={`q-${field.id}`}
                     required={field.required}
                     className="input"
                     value={formData[field.id] || ""}
@@ -308,6 +312,7 @@ export default function PublicFormPage() {
                 {field.type === "date" ? (
                   <input
                     type="date"
+                    id={`q-${field.id}`}
                     required={field.required}
                     className="input"
                     value={formData[field.id] || ""}
@@ -320,6 +325,7 @@ export default function PublicFormPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
+                      id={`q-${field.id}`}
                       required={field.required}
                       className="h-4 w-4 rounded border-slate-300"
                       checked={formData[field.id] === "true"}
@@ -335,6 +341,7 @@ export default function PublicFormPage() {
                 ) : null}
                 {field.type === "select" ? (
                   <select
+                    id={`q-${field.id}`}
                     required={field.required}
                     className="input"
                     value={formData[field.id] || ""}
@@ -354,6 +361,7 @@ export default function PublicFormPage() {
                   <input
                     type="file"
                     accept={UPLOAD_ACCEPT}
+                    id={`q-${field.id}`}
                     required={field.required}
                     className="input"
                     onChange={(e) => {

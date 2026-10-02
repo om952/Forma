@@ -318,6 +318,7 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
         subscriptionStatus: true,
         currentPeriodEnd: true,
         cancelAtPeriodEnd: true,
+        razorpaySubscriptionId: true,
       },
     });
 
@@ -330,6 +331,9 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       status: org.subscriptionStatus,
       currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: org.cancelAtPeriodEnd,
+      // False for Premium granted without a checkout (a seeded demo, a manual
+      // upgrade): there is no Razorpay subscription for "Cancel" to act on.
+      hasSubscription: Boolean(org.razorpaySubscriptionId),
       // Lets the billing page say when checkout takes test cards only.
       billingMode: !billingConfig
         ? "disabled"

@@ -58,6 +58,11 @@ public class AuthSteps {
     new BuilderPage(world).waitUntilShown();
   }
 
+  @Then("they land on their dashboard")
+  public void theyLandOnTheirDashboard() {
+    new DashboardPage(world).waitUntilShown();
+  }
+
   @Then("they are reminded to confirm their email address")
   public void theyAreRemindedToConfirm() {
     new WebDriverWait(world.driver(), world.config.timeout())

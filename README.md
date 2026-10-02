@@ -248,6 +248,10 @@ Set frontend env:
 ```
 NEXT_PUBLIC_API_BASE_URL="http://localhost:5001"
 NEXT_PUBLIC_RAZORPAY_KEY_ID="your_key_id"
+# Optional: adds "Explore the demo" (one-click sign-in) to the home and
+# sign-in pages. Only for a demo deployment: the password is public.
+NEXT_PUBLIC_DEMO_EMAIL="owner@forma.demo"
+NEXT_PUBLIC_DEMO_PASSWORD="forma-demo-2026"
 ```
 
 Start the frontend:
@@ -256,12 +260,32 @@ Start the frontend:
 npm run dev
 ```
 
+### 4) Demo data (optional)
+
+```bash
+cd backend
+npm run seed:demo
+```
+
+Creates a Premium organization, Northwind Labs, with four forms, about 460
+responses over three months (so every analytics view has something in it),
+webhooks with failed deliveries, a pending invite and an activity log. Sign in
+as `owner@forma.demo`, `admin@forma.demo` or `member@forma.demo`, password
+`forma-demo-2026`. Running it again resets that organization and nothing else.
+
 ## URLs
 
 - Frontend: `http://localhost:3000`
 - Backend: `http://localhost:5001`
 
 ## Deploying
+
+### Free demo (Vercel + Render + Neon)
+
+For a public demo on free tiers only, `render.yaml` defines the API (running
+its queue workers in-process) and Redis on Render, with Postgres on Neon and the
+web app on Vercel. [deploy/FREE-DEMO.md](deploy/FREE-DEMO.md) walks through
+it, including the demo data and a five-minute walkthrough.
 
 ### One host with Docker Compose
 

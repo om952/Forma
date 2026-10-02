@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { apiFetch, errorMessage } from "../../lib/api";
 import { setAuthToken, setAuthUser, type AuthUser } from "../../lib/auth";
+import { demoAccount } from "../../lib/demo";
 
 type AuthMode = "signup" | "login";
 
@@ -21,25 +22,24 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [organizationName, setOrganizationName] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    const payload: AuthPayload = { email, password };
+    if (organizationName.trim()) {
+      payload.organizationName = organizationName.trim();
+    }
+    return authenticate(mode, payload);
+  };
+
+  const authenticate = async (kind: AuthMode, payload: AuthPayload) => {
     setStatus(null);
     setIsSubmitting(true);
 
     try {
-      const payload: AuthPayload = {
-        email,
-        password,
-      };
-
-      if (organizationName.trim()) {
-        payload.organizationName = organizationName.trim();
-      }
-
-      const response = await apiFetch(`/api/auth/${mode}`, {
+      const response = await apiFetch(`/api/auth/${kind}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -65,11 +65,14 @@ export default function AuthPage() {
       if (data.user) {
         setAuthUser(data.user as AuthUser);
       }
-      setStatus("Authenticated. Redirecting to builder...");
-      router.push("/builder");
+      // A new workspace starts with its first form; a returning user, with their forms.
+      setStatus({
+        kind: "success",
+        text: kind === "signup" ? "Workspace created. Opening the builder…" : "Signed in. Opening your dashboard…",
+      });
+      router.push(kind === "signup" ? "/builder" : "/dashboard");
     } catch (error) {
-      const message = errorMessage(error);
-      setStatus(message);
+      setStatus({ kind: "error", text: errorMessage(error) });
     } finally {
       setIsSubmitting(false);
     }
@@ -110,7 +113,7 @@ export default function AuthPage() {
             </li>
             <li className="flex items-start gap-3">
               <span className="mt-0.5">📊</span>
-              Drop-off rates and heatmaps on every field.
+              Where respondents drop off, question by question, and when responses arrive.
             </li>
           </ul>
         </div>
@@ -232,9 +235,32 @@ export default function AuthPage() {
           </button>
 
           {status ? (
-            <div className="status-info" data-testid="auth-status">{status}</div>
+            <div
+              className={status.kind === "error" ? "status-error" : "status-success"}
+              data-testid="auth-status"
+            >
+              {status.text}
+            </div>
           ) : null}
         </form>
+
+        {demoAccount ? (
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5" data-testid="demo-login">
+            <p className="text-sm font-semibold text-indigo-950">Just looking around?</p>
+            <p className="mt-1 text-sm text-indigo-900/80">
+              Open a demo workspace with four forms, three months of responses, webhooks and a
+              team — no sign-up needed.
+            </p>
+            <button
+              type="button"
+              className="btn-primary mt-4 w-full"
+              disabled={isSubmitting}
+              onClick={() => demoAccount && authenticate("login", demoAccount)}
+            >
+              Explore the demo
+            </button>
+          </div>
+        ) : null}
         </div>
       </div>
     </div>

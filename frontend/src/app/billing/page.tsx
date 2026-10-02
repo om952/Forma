@@ -6,6 +6,7 @@ import AppHeader from "../../components/AppHeader";
 import LoadError from "../../components/LoadError";
 import { apiFetch, apiJson, errorMessage } from "../../lib/api";
 import { canManageBilling, useAuthToken, useAuthUser } from "../../lib/auth";
+import { formatDate } from "../../lib/format";
 import { toast } from "../../lib/toast";
 
 type SubscriptionStatus = {
@@ -13,6 +14,7 @@ type SubscriptionStatus = {
   status: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  hasSubscription: boolean;
   billingMode: "live" | "test" | "disabled";
 };
 
@@ -215,9 +217,7 @@ export default function BillingPage() {
                 <p className="mt-1 text-sm text-emerald-700">
                   Status: {status.status ?? "active"}
                   {status.currentPeriodEnd
-                    ? ` · ${status.cancelAtPeriodEnd ? "Ends" : "Renews"} on ${new Date(
-                        status.currentPeriodEnd
-                      ).toLocaleDateString()}`
+                    ? ` · ${status.cancelAtPeriodEnd ? "Ends" : "Renews"} on ${formatDate(status.currentPeriodEnd)}`
                     : ""}
                 </p>
               </div>
@@ -235,6 +235,11 @@ export default function BillingPage() {
             {!canManage ? (
               <p className="mt-6 text-sm text-emerald-800" data-testid="billing-managers-only">
                 Only owners and admins can change the plan.
+              </p>
+            ) : !status.hasSubscription ? (
+              <p className="mt-6 text-sm text-emerald-800">
+                Premium was switched on for this workspace without a Razorpay subscription, so
+                there&apos;s nothing to cancel here.
               </p>
             ) : status.cancelAtPeriodEnd ? (
               <p className="mt-6 text-sm text-emerald-800">

@@ -27,6 +27,7 @@ const freePlan = {
   status: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
+  hasSubscription: false,
   billingMode: "live",
 };
 
@@ -77,5 +78,18 @@ describe("billing page", () => {
     stubApi(() => reply(200, { ...freePlan, billingMode: "test" }));
     render(<BillingPage />);
     expect(await screen.findByText(/Test mode/)).toBeTruthy();
+  });
+
+  it("offers Cancel only when a Razorpay subscription is attached", async () => {
+    const premium = { ...freePlan, tier: "PREMIUM", status: "active" };
+    stubApi(() => reply(200, premium));
+    render(<BillingPage />);
+    expect(await screen.findByText(/nothing to cancel/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Cancel Subscription" })).toBeNull();
+
+    cleanup();
+    stubApi(() => reply(200, { ...premium, hasSubscription: true }));
+    render(<BillingPage />);
+    expect(await screen.findByRole("button", { name: "Cancel Subscription" })).toBeTruthy();
   });
 });

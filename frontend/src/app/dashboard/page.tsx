@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
+import Icon from "../../components/Icon";
 import LoadError from "../../components/LoadError";
 import { apiJson, errorMessage } from "../../lib/api";
 import { canDeleteForm, useAuthToken, useAuthUser } from "../../lib/auth";
+import { formatDate } from "../../lib/format";
 import { toast } from "../../lib/toast";
 
 type FormItem = {
@@ -196,21 +198,27 @@ export default function DashboardPage() {
           <>
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <div className="stat-tile">
-              <span className="stat-tile-icon">📋</span>
+              <span className="stat-tile-icon text-indigo-600">
+                <Icon name="forms" />
+              </span>
               <div>
                 <p className="text-2xl font-semibold text-slate-900">{stats.totalForms}</p>
                 <p className="text-xs text-slate-500">Total forms</p>
               </div>
             </div>
             <div className="stat-tile">
-              <span className="stat-tile-icon">📥</span>
+              <span className="stat-tile-icon text-indigo-600">
+                <Icon name="inbox" />
+              </span>
               <div>
                 <p className="text-2xl font-semibold text-slate-900">{stats.totalResponses}</p>
                 <p className="text-xs text-slate-500">Total responses</p>
               </div>
             </div>
             <div className="stat-tile">
-              <span className="stat-tile-icon">🟢</span>
+              <span className="stat-tile-icon text-indigo-600">
+                <Icon name="live" />
+              </span>
               <div>
                 <p className="text-2xl font-semibold text-slate-900">{stats.activeForms}</p>
                 <p className="text-xs text-slate-500">Active forms</p>
@@ -222,18 +230,18 @@ export default function DashboardPage() {
               <div
                 key={form.id}
                 data-testid="form-card"
-                className="card-elevated transition hover:-translate-y-1"
+                className="card-elevated flex min-w-0 flex-col transition hover:-translate-y-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-lg font-semibold text-slate-900" data-testid="form-card-title">{form.name}</h3>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {form._count.responses} response
-                      {form._count.responses !== 1 ? "s" : ""}
-                    </p>
-                  </div>
+                <div className="flex items-start justify-between gap-3">
+                  <h3
+                    className="line-clamp-2 min-w-0 text-base font-semibold leading-snug text-slate-900"
+                    data-testid="form-card-title"
+                    title={form.name}
+                  >
+                    {form.name}
+                  </h3>
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                       form.isActive
                         ? "bg-emerald-100 text-emerald-700"
                         : "bg-slate-100 text-slate-600"
@@ -243,57 +251,50 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                <div className="mt-4 text-xs text-slate-400">
-                  Updated {new Date(form.updatedAt).toLocaleDateString()}
-                </div>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  {form._count.responses} response{form._count.responses !== 1 ? "s" : ""}
+                  {" · "}Updated {formatDate(form.updatedAt)}
+                </p>
 
-                <div className="mt-6 flex flex-wrap gap-2">
-                  <Link
-                    href={`/builder?formId=${form.id}`}
-                    className="btn-primary py-2 text-xs"
-                  >
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                  <Link href={`/builder?formId=${form.id}`} className="btn-primary px-2 py-2 text-center text-xs">
                     Edit
                   </Link>
-                  <Link
-                    href={`/share/${form.id}`}
-                    className="btn-secondary py-2 text-xs"
-                  >
-                    Share
-                  </Link>
-                  <Link
-                    href={`/analytics/${form.id}`}
-                    className="btn-secondary py-2 text-xs"
-                  >
-                    Analytics
-                  </Link>
-                  <Link
-                    href={`/responses/${form.id}`}
-                    className="btn-secondary py-2 text-xs"
-                  >
+                  <Link href={`/responses/${form.id}`} className="btn-secondary px-2 py-2 text-center text-xs">
                     Responses
                   </Link>
-                  <Link
-                    href={`/webhooks/${form.id}`}
-                    className="btn-secondary py-2 text-xs"
-                  >
-                    Webhooks
+                  <Link href={`/analytics/${form.id}`} className="btn-secondary px-2 py-2 text-center text-xs">
+                    Analytics
                   </Link>
-                  <button
-                    data-testid="form-toggle"
-                    onClick={() => handleToggle(form.id, form.isActive)}
-                    className="btn-secondary py-2 text-xs"
-                  >
-                    {form.isActive ? "Disable" : "Enable"}
-                  </button>
-                  {canDelete ? (
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs font-medium">
+                  <div className="flex gap-3">
+                    <Link href={`/share/${form.id}`} className="text-slate-600 hover:text-indigo-600">
+                      Share
+                    </Link>
+                    <Link href={`/webhooks/${form.id}`} className="text-slate-600 hover:text-indigo-600">
+                      Webhooks
+                    </Link>
+                  </div>
+                  <div className="flex gap-3">
                     <button
-                      data-testid="form-delete"
-                      onClick={() => handleDelete(form.id)}
-                      className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-semibold text-rose-600 transition hover:-translate-y-0.5 hover:border-rose-300"
+                      data-testid="form-toggle"
+                      onClick={() => handleToggle(form.id, form.isActive)}
+                      className="text-slate-600 hover:text-slate-900"
                     >
-                      Delete
+                      {form.isActive ? "Disable" : "Enable"}
                     </button>
-                  ) : null}
+                    {canDelete ? (
+                      <button
+                        data-testid="form-delete"
+                        onClick={() => handleDelete(form.id)}
+                        className="text-rose-600 hover:text-rose-700"
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ))}
