@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
+import LoadError from "../../../components/LoadError";
 import { apiFetch, apiJson, errorMessage, getApiBaseUrl } from "../../../lib/api";
 import { getAuthToken } from "../../../lib/auth";
+import { toast } from "../../../lib/toast";
 
 const PRESET_WEBHOOKS = [
   {
@@ -52,6 +54,8 @@ export default function WebhooksPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [selectedPreset, setSelectedPreset] = useState("");
@@ -70,6 +74,8 @@ export default function WebhooksPage() {
       }
 
       try {
+        setLoading(true);
+        setLoadError(null);
         const authHeader = { Authorization: `Bearer ${token}` };
         const [webhooksRes, deadLettersRes] = await Promise.all([
           apiFetch(`/api/webhooks?formId=${encodeURIComponent(formId)}`, { headers: authHeader }),
@@ -78,7 +84,10 @@ export default function WebhooksPage() {
           }),
         ]);
 
-        if (!webhooksRes.ok) throw new Error("Failed to load webhooks");
+        if (!webhooksRes.ok) {
+          const body = await webhooksRes.json().catch(() => ({}));
+          throw new Error(body.message || "Failed to load webhooks");
+        }
         const data = (await webhooksRes.json()) as Webhook[];
         if (cancelled) return;
         setWebhooks(data);
@@ -91,9 +100,9 @@ export default function WebhooksPage() {
           setDeadLetterCursor(page.nextCursor);
         }
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Error");
+        if (!cancelled) setLoadError(errorMessage(error));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
@@ -101,7 +110,7 @@ export default function WebhooksPage() {
     return () => {
       cancelled = true;
     };
-  }, [formId, token]);
+  }, [formId, token, reloadKey]);
 
   const loadMoreDeadLetters = async () => {
     if (!token || !deadLetterCursor) return;
@@ -115,7 +124,7 @@ export default function WebhooksPage() {
       setDeadLetters((prev) => [...prev, ...page.items]);
       setDeadLetterCursor(page.nextCursor);
     } catch (error) {
-      setStatus(errorMessage(error));
+      toast.error(errorMessage(error));
     } finally {
       setLoadingMore(false);
     }
@@ -125,25 +134,15 @@ export default function WebhooksPage() {
     if (!token) return;
 
     setRetryingId(deadLetterId);
-    setStatus(null);
     try {
-      const response = await apiFetch(
-        `/api/webhooks/dead-letters/${deadLetterId}/replay`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.message || "Failed to retry delivery");
-      }
-
+      await apiJson(`/api/webhooks/dead-letters/${deadLetterId}/replay`, {
+        method: "POST",
+        token,
+      });
       setDeadLetters((prev) => prev.filter((d) => d.id !== deadLetterId));
-      setStatus("Delivery re-queued.");
+      toast.success("Delivery re-queued.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Error");
+      toast.error(errorMessage(error));
     } finally {
       setRetryingId(null);
     }
@@ -161,73 +160,54 @@ export default function WebhooksPage() {
 
     setStatus(null);
     try {
-      const response = await apiFetch("/api/webhooks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ formId, url }),
+      const webhook = await apiJson<Webhook>("/api/webhooks", {
+        token,
+        body: { formId, url },
       });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.message || "Failed to create webhook");
-      }
-
-      const webhook = (await response.json()) as Webhook;
       setWebhooks((prev) => [webhook, ...prev]);
       setUrl("");
       setSelectedPreset("");
+      toast.success("Webhook added.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Error");
+      // Shown by the form: it's about the address just typed.
+      setStatus(errorMessage(error));
     }
   };
 
   const handleDelete = async (webhookId: string) => {
     if (!token) return;
+    if (!confirm("Delete this webhook? Responses will stop being sent to it.")) return;
     try {
-      const response = await apiFetch(`/api/webhooks/${webhookId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to delete");
+      await apiJson(`/api/webhooks/${webhookId}`, { method: "DELETE", token });
       setWebhooks((prev) => prev.filter((w) => w.id !== webhookId));
+      toast.success("Webhook deleted.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Error");
+      toast.error(errorMessage(error));
     }
   };
 
   const handleToggle = async (webhook: Webhook) => {
     if (!token) return;
     try {
-      const response = await apiFetch(`/api/webhooks/${webhook.id}`, {
+      const updated = await apiJson<Webhook>(`/api/webhooks/${webhook.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isActive: !webhook.isActive }),
+        token,
+        body: { isActive: !webhook.isActive },
       });
-      if (!response.ok) throw new Error("Failed to update");
-      const updated = (await response.json()) as Webhook;
       setWebhooks((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
+      toast.success(updated.isActive ? "Webhook enabled." : "Webhook disabled.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Error");
+      toast.error(errorMessage(error));
     }
   };
 
   const handleTest = async (webhookId: string) => {
     if (!token) return;
     try {
-      const response = await apiFetch(`/api/webhooks/${webhookId}/test`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to test webhook");
-      setStatus("Test webhook queued.");
+      await apiJson(`/api/webhooks/${webhookId}/test`, { method: "POST", token });
+      toast.success("Test delivery queued. Check your endpoint in a few seconds.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Error");
+      toast.error(errorMessage(error));
     }
   };
 
@@ -249,6 +229,18 @@ export default function WebhooksPage() {
         <AppHeader />
         <div className="flex items-center justify-center py-24">
           <p className="text-slate-500">Loading webhooks...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="page-bg">
+        <AppHeader />
+        <FormSubNav formId={formId} active="webhooks" />
+        <div className="mx-auto w-full max-w-3xl px-6 py-10">
+          <LoadError message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
         </div>
       </div>
     );
@@ -304,7 +296,7 @@ export default function WebhooksPage() {
             </button>
           </form>
 
-          {status ? <div className="status-info mt-4" data-testid="webhooks-status">{status}</div> : null}
+          {status ? <div className="status-error mt-4" data-testid="webhooks-status">{status}</div> : null}
         </div>
 
         <div className="mt-6 space-y-4">

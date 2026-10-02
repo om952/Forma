@@ -330,6 +330,12 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       status: org.subscriptionStatus,
       currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: org.cancelAtPeriodEnd,
+      // Lets the billing page say when checkout takes test cards only.
+      billingMode: !billingConfig
+        ? "disabled"
+        : billingConfig.keyId.startsWith("rzp_test_")
+          ? "test"
+          : "live",
     });
   } catch (error) {
     req.log.error({ err: error }, "getSubscriptionStatus failed");

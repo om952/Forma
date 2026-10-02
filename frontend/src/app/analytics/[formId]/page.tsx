@@ -16,6 +16,7 @@ import {
   type FieldAnalytics,
 } from "../../../components/AnalyticsCharts";
 import FormSubNav from "../../../components/FormSubNav";
+import LoadError from "../../../components/LoadError";
 import { ApiError, apiJson, errorMessage } from "../../../lib/api";
 import { useAuthToken } from "../../../lib/auth";
 import { useBrowserValue } from "../../../lib/useBrowserValue";
@@ -59,6 +60,7 @@ export default function AnalyticsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!formId || !token || !timeZone) return;
@@ -91,7 +93,7 @@ export default function AnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [formId, token, timeZone, days]);
+  }, [formId, token, timeZone, days, reloadKey]);
 
   const funnel = analytics?.funnel;
   const untracked = analytics && analytics.funnel.views === 0 && analytics.responses > 0;
@@ -156,12 +158,19 @@ export default function AnalyticsPage() {
               ) : null}
             </div>
 
-            {status ? <div className="status-error">{status}</div> : null}
+            {/* Before anything has loaded, a failure replaces the page; after, it sits above the last good data. */}
+            {!analytics && status && !loading ? (
+              <LoadError message={status} onRetry={() => setReloadKey((key) => key + 1)} />
+            ) : status ? (
+              <div className="status-error">{status}</div>
+            ) : null}
 
             {!analytics ? (
-              <div className="card-elevated p-10 text-center">
-                <p className="text-slate-500">{loading ? "Loading analytics…" : "No analytics to show."}</p>
-              </div>
+              status && !loading ? null : (
+                <div className="card-elevated p-10 text-center">
+                  <p className="text-slate-500">{loading ? "Loading analytics…" : "No analytics to show."}</p>
+                </div>
+              )
             ) : (
               // A refetch keeps the previous render, dimmed, instead of flashing.
               <div className={`flex flex-col gap-6 transition-opacity ${loading ? "opacity-60" : ""}`}>

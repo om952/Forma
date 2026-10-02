@@ -12,10 +12,10 @@ import "./globals.css";
  */
 export default function GlobalError({
   error,
-  reset,
+  unstable_retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
   useEffect(() => {
     Sentry.captureException(error);
@@ -36,7 +36,7 @@ export default function GlobalError({
             <p className="mt-3 text-xs text-slate-400">Reference: {error.digest}</p>
           ) : null}
           <div className="mt-6 flex justify-center gap-3">
-            <button type="button" className="btn-primary" onClick={reset}>
+            <button type="button" className="btn-primary" onClick={() => unstable_retry()}>
               Try again
             </button>
             {/* A full reload, not client navigation: the app's own state may be what broke. */}

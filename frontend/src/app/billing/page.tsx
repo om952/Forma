@@ -3,14 +3,17 @@
 import { useEffect, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
-import { apiFetch } from "../../lib/api";
+import LoadError from "../../components/LoadError";
+import { apiFetch, apiJson, errorMessage } from "../../lib/api";
 import { canManageBilling, useAuthToken, useAuthUser } from "../../lib/auth";
+import { toast } from "../../lib/toast";
 
 type SubscriptionStatus = {
   tier: "FREE" | "PREMIUM";
   status: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  billingMode: "live" | "test" | "disabled";
 };
 
 const RAZORPAY_KEY_ID =
@@ -19,6 +22,10 @@ const RAZORPAY_KEY_ID =
 /** The subset of Razorpay's checkout.js used here. */
 type RazorpayCheckoutConstructor = new (options: Record<string, unknown>) => {
   open: () => void;
+  on: (
+    event: "payment.failed",
+    handler: (response: { error?: { description?: string } }) => void
+  ) => void;
 };
 
 const loadRazorpay = () =>
@@ -37,7 +44,12 @@ const loadRazorpay = () =>
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Razorpay"));
+    script.onerror = () =>
+      reject(
+        new Error(
+          "The payment window couldn't load. If an ad or script blocker is on, allow checkout.razorpay.com and try again."
+        )
+      );
     document.body.appendChild(script);
   });
 
@@ -45,6 +57,10 @@ export default function BillingPage() {
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Set from "Subscribe" until the payment window opens, so a second click
+  // can't start a second subscription.
+  const [subscribing, setSubscribing] = useState(false);
   const token = useAuthToken();
   // The API refuses plan changes from members; don't offer them the buttons.
   const canManage = canManageBilling(useAuthUser());
@@ -62,14 +78,12 @@ export default function BillingPage() {
         return;
       }
       try {
-        const response = await apiFetch("/api/payments/status", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) throw new Error("Failed to load subscription status");
-        const data = (await response.json()) as SubscriptionStatus;
-        setStatus(data);
+        setLoadError(null);
+        setStatus(await apiJson<SubscriptionStatus>("/api/payments/status", { token }));
       } catch (error) {
-        setError(error instanceof Error ? error.message : "Error");
+        // Without the status the page can't tell Free from Premium, so it
+        // shows nothing rather than offering a Premium org "Subscribe".
+        setLoadError(errorMessage(error));
       } finally {
         setLoading(false);
       }
@@ -79,10 +93,12 @@ export default function BillingPage() {
   }, [token, refreshKey]);
 
   const handleSubscribe = async () => {
+    if (!token || subscribing) return;
+    setSubscribing(true);
     try {
       setError(null);
+      setNotice(null);
       await loadRazorpay();
-      if (!token) return;
 
       const response = await apiFetch("/api/payments/create-subscription", {
         method: "POST",
@@ -107,7 +123,7 @@ export default function BillingPage() {
 
       const RazorpayCtor = (window as Window & { Razorpay?: RazorpayCheckoutConstructor })
         .Razorpay;
-      if (!RazorpayCtor) throw new Error("Razorpay SDK not available");
+      if (!RazorpayCtor) throw new Error("The payment window couldn't load. Try again.");
 
       const checkout = new RazorpayCtor({
         key: keyId ?? RAZORPAY_KEY_ID,
@@ -122,10 +138,21 @@ export default function BillingPage() {
         },
         theme: { color: "#4f46e5" },
       });
+      // Razorpay shows the failure in its window too; this keeps the reason
+      // on the page after that window is closed.
+      checkout.on("payment.failed", (response) => {
+        setError(
+          `The payment didn't go through${
+            response.error?.description ? `: ${response.error.description}` : "."
+          } You can try again with another card or method.`
+        );
+      });
 
       checkout.open();
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Error");
+      setError(errorMessage(error));
+    } finally {
+      setSubscribing(false);
     }
   };
 
@@ -149,8 +176,9 @@ export default function BillingPage() {
         throw new Error(body.message || "Failed to cancel");
       }
       setRefreshKey((key) => key + 1);
+      toast.success("Subscription cancelled. Premium stays on until the end of the paid period.");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Error");
+      setError(errorMessage(error));
     }
   };
 
@@ -175,9 +203,11 @@ export default function BillingPage() {
         </div>
 
         {error ? <div className="status-error mb-6">{error}</div> : null}
-        {notice ? <div className="status-info mb-6">{notice}</div> : null}
+        {notice ? <div className="status-success mb-6">{notice}</div> : null}
 
-        {status?.tier === "PREMIUM" ? (
+        {loadError ? (
+          <LoadError message={loadError} onRetry={() => setRefreshKey((key) => key + 1)} />
+        ) : status?.tier === "PREMIUM" ? (
           <div className="card-elevated border-emerald-200 bg-emerald-50/80">
             <div className="flex items-center justify-between">
               <div>
@@ -198,9 +228,8 @@ export default function BillingPage() {
 
             <ul className="mt-6 space-y-2 text-sm text-emerald-800">
               <li>✓ Unlimited forms</li>
-              <li>✓ Advanced analytics (drop-off, heatmaps)</li>
-              <li>✓ Webhooks to Slack, Zapier, custom endpoints</li>
-              <li>✓ File uploads without limits</li>
+              <li>✓ Analytics: funnel, per-field drop-off, response heatmap</li>
+              <li>✓ Webhooks to Slack, Zapier and custom endpoints</li>
             </ul>
 
             {!canManage ? (
@@ -221,7 +250,8 @@ export default function BillingPage() {
               </button>
             )}
           </div>
-        ) : (
+        ) : !status ? null : (
+          // Only once the plan is known to be Free: never offer "Subscribe" on a guess.
           <div className="space-y-6">
             <div className="card-elevated">
               <h2 className="text-2xl font-semibold tracking-tight text-slate-900" data-testid="billing-plan">Upgrade to Premium</h2>
@@ -260,10 +290,11 @@ export default function BillingPage() {
               {canManage ? (
                 <button
                   onClick={handleSubscribe}
-                  className="btn-primary mt-6 w-full"
+                  disabled={subscribing}
+                  className="btn-primary mt-6 w-full disabled:cursor-wait disabled:opacity-60"
                   data-testid="billing-subscribe"
                 >
-                  Subscribe to Premium
+                  {subscribing ? "Opening checkout…" : "Subscribe to Premium"}
                 </button>
               ) : (
                 <p className="status-info mt-6" data-testid="billing-managers-only">
@@ -271,18 +302,20 @@ export default function BillingPage() {
                 </p>
               )}
 
-              <p className="mt-4 text-xs text-slate-500">
-                Test mode: no real charges. Use Razorpay test card 5267 3181 8797 5449.
-              </p>
+              {status?.billingMode === "test" ? (
+                <p className="mt-4 text-xs text-slate-500">
+                  Test mode: no real charges. Use Razorpay test card 5267 3181 8797 5449.
+                </p>
+              ) : null}
             </div>
 
             <div className="card-elevated">
               <h3 className="text-lg font-semibold text-slate-900">Free plan limits</h3>
               <ul className="mt-4 space-y-2 text-sm text-slate-600">
                 <li>✓ Up to 3 forms</li>
-                <li>✓ Basic analytics (7-day submissions)</li>
-                <li>✗ Drop-off rates & heatmaps</li>
-                <li>✗ Unlimited webhooks</li>
+                <li>✓ Unlimited responses, CSV export</li>
+                <li>✓ Webhooks to Slack, Zapier and custom endpoints</li>
+                <li>✗ Analytics (funnel, drop-off, heatmaps)</li>
               </ul>
             </div>
           </div>

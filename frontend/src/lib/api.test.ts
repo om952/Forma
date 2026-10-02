@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, apiJson, errorMessage } from "./api";
+import { ApiError, NETWORK_ERROR_MESSAGE, apiJson, errorMessage } from "./api";
 
 const reply = (status: number, body?: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), {
@@ -57,5 +57,18 @@ describe("apiJson", () => {
   it("still throws something readable when the error body is not JSON", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad gateway", { status: 502 })));
     await expect(apiJson("/api/forms")).rejects.toMatchObject({ status: 502, message: "Request failed (502)" });
+  });
+
+  it("turns an unreachable server into a readable error instead of \"Failed to fetch\"", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+
+    const error = await apiJson("/api/forms").catch((e: unknown) => e);
+    expect(error).toMatchObject({ status: 0, code: "network_error" });
+    expect(errorMessage(error)).toBe(NETWORK_ERROR_MESSAGE);
+  });
+
+  it("lets an aborted request stay an abort", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("aborted", "AbortError")));
+    await expect(apiJson("/api/forms")).rejects.toMatchObject({ name: "AbortError" });
   });
 });

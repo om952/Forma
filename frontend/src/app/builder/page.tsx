@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
 import FormSubNav from "../../components/FormSubNav";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, errorMessage } from "../../lib/api";
 import { useAuthToken } from "../../lib/auth";
 import { useBrowserValue } from "../../lib/useBrowserValue";
 
@@ -45,7 +45,7 @@ export default function FormBuilderPage() {
     loadForm,
   } = useFormBuilderStore();
   const token = useAuthToken();
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   // Read the edit target straight off the URL rather than via useSearchParams,
   // which would require wrapping this page in a Suspense boundary.
@@ -102,7 +102,7 @@ export default function FormBuilderPage() {
           schema: data.schema ?? [],
         });
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Unknown error");
+        setStatus({ kind: "error", text: errorMessage(error) });
       } finally {
         setIsLoading(false);
       }
@@ -117,13 +117,13 @@ export default function FormBuilderPage() {
 
     try {
       if (!token) {
-        setStatus("Please sign in before saving a form.");
+        setStatus({ kind: "error", text: "Please sign in before saving a form." });
         return;
       }
 
       const trimmedTitle = title.trim();
       if (!trimmedTitle) {
-        setStatus("Give your form a title before saving.");
+        setStatus({ kind: "error", text: "Give your form a title before saving." });
         return;
       }
 
@@ -163,11 +163,13 @@ export default function FormBuilderPage() {
           setFormId(created.id);
         }
       }
-
-      setStatus(isEditing ? "Form updated successfully." : "Form saved successfully.");
+      setStatus({
+        kind: "success",
+        text: isEditing ? "Form updated successfully." : "Form saved successfully.",
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      setStatus(message);
+      const message = errorMessage(error);
+      setStatus({ kind: "error", text: message });
     } finally {
       setIsSaving(false);
     }
@@ -217,7 +219,7 @@ export default function FormBuilderPage() {
 
   const handleAddRule = () => {
     if (!ruleIfFieldId || !ruleTargetFieldId || ruleIfFieldId === ruleTargetFieldId) {
-      setStatus("Invalid rule: source and target fields must be different");
+      setStatus({ kind: "error", text: "Invalid rule: source and target fields must be different" });
       return;
     }
 
@@ -247,7 +249,7 @@ export default function FormBuilderPage() {
   const handleUpdateRule = () => {
     if (!editingRule) return;
     if (!ruleIfFieldId || !ruleTargetFieldId || ruleIfFieldId === ruleTargetFieldId) {
-      setStatus("Invalid rule: source and target fields must be different");
+      setStatus({ kind: "error", text: "Invalid rule: source and target fields must be different" });
       return;
     }
     updateRule(editingRule, {
@@ -366,7 +368,14 @@ export default function FormBuilderPage() {
                 {formId ? "New Form" : "Clear All"}
               </button>
               {token ? <p className="text-xs text-slate-500">Authenticated</p> : null}
-              {status ? <div className="status-info" data-testid="builder-status">{status}</div> : null}
+              {status ? (
+                <div
+                  className={status.kind === "success" ? "status-success" : "status-error"}
+                  data-testid="builder-status"
+                >
+                  {status.text}
+                </div>
+              ) : null}
             </div>
           </div>
         </aside>

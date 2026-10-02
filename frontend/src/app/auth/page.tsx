@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { apiFetch } from "../../lib/api";
+import { apiFetch, errorMessage } from "../../lib/api";
 import { setAuthToken, setAuthUser, type AuthUser } from "../../lib/auth";
 
 type AuthMode = "signup" | "login";
@@ -68,7 +68,7 @@ export default function AuthPage() {
       setStatus("Authenticated. Redirecting to builder...");
       router.push("/builder");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = errorMessage(error);
       setStatus(message);
     } finally {
       setIsSubmitting(false);

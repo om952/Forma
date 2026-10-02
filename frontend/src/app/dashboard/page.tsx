@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import AppHeader from "../../components/AppHeader";
-import { apiFetch, apiJson, errorMessage } from "../../lib/api";
+import LoadError from "../../components/LoadError";
+import { apiJson, errorMessage } from "../../lib/api";
 import { canDeleteForm, useAuthToken, useAuthUser } from "../../lib/auth";
+import { toast } from "../../lib/toast";
 
 type FormItem = {
   id: string;
@@ -25,7 +27,9 @@ const PAGE_SIZE = 24;
 export default function DashboardPage() {
   const [forms, setForms] = useState<FormItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by "Try again" to re-run the first page load.
+  const [reloadKey, setReloadKey] = useState(0);
   const token = useAuthToken();
   const canDelete = canDeleteForm(useAuthUser());
 
@@ -76,15 +80,15 @@ export default function DashboardPage() {
 
       try {
         setLoading(true);
+        setLoadError(null);
         const page = await apiJson<FormPage>(`/api/forms?limit=${PAGE_SIZE}`, { token });
         if (cancelled) return;
         setForms(page.items);
         setNextCursor(page.nextCursor);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        setStatus(message);
+        if (!cancelled) setLoadError(errorMessage(error));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
@@ -92,7 +96,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, reloadKey]);
 
   const loadMore = async () => {
     if (!token || !nextCursor) return;
@@ -106,7 +110,7 @@ export default function DashboardPage() {
       setForms((prev) => [...prev, ...page.items]);
       setNextCursor(page.nextCursor);
     } catch (error) {
-      setStatus(errorMessage(error));
+      toast.error(errorMessage(error));
     } finally {
       setLoadingMore(false);
     }
@@ -117,21 +121,12 @@ export default function DashboardPage() {
     if (!token) return;
 
     try {
-      const response = await apiFetch(`/api/forms/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.message || "Failed to delete");
-      }
-
+      await apiJson(`/api/forms/${id}`, { method: "DELETE", token });
       setForms((prev) => prev.filter((f) => f.id !== id));
       setSummaryKey((key) => key + 1);
+      toast.success("Form deleted.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      setStatus(message);
+      toast.error(errorMessage(error));
     }
   };
 
@@ -139,27 +134,20 @@ export default function DashboardPage() {
     if (!token) return;
 
     try {
-      const response = await apiFetch(`/api/forms/${id}`, {
+      await apiJson(`/api/forms/${id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isActive: !current }),
+        token,
+        body: { isActive: !current },
       });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.message || "Failed to update");
-      }
-
       setForms((prev) =>
         prev.map((f) => (f.id === id ? { ...f, isActive: !current } : f))
       );
       setSummaryKey((key) => key + 1);
+      toast.success(
+        current ? "Form disabled. It no longer accepts responses." : "Form enabled."
+      );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      setStatus(message);
+      toast.error(errorMessage(error));
     }
   };
 
@@ -177,10 +165,6 @@ export default function DashboardPage() {
           </Link>
         </header>
 
-        {status ? (
-          <div className="status-error mb-6">{status}</div>
-        ) : null}
-
         {!token ? (
           <div className="card-elevated p-10 text-center">
             <p className="text-slate-600">Please sign in to view your forms.</p>
@@ -192,6 +176,8 @@ export default function DashboardPage() {
           <div className="card-elevated p-10 text-center">
             <p className="text-slate-500">Loading forms...</p>
           </div>
+        ) : loadError ? (
+          <LoadError message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
         ) : forms.length === 0 ? (
           <div className="card-elevated flex flex-col items-center p-14 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-3xl">

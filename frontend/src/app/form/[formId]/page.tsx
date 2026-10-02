@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { apiFetch } from "../../../lib/api";
+import { apiFetch, errorMessage } from "../../../lib/api";
 import { isFieldVisible, type FormField } from "../../../stores/formBuilderStore";
 
 type FormResponse = {
@@ -101,7 +101,7 @@ export default function PublicFormPage() {
         setForm(data);
         void startVisit(formId);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
+        const message = errorMessage(error);
         setStatus(message);
       } finally {
         setLoading(false);
@@ -190,7 +190,7 @@ export default function PublicFormPage() {
       endVisit(formId);
       setSubmitted(true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = errorMessage(error);
       setStatus(message);
     }
   };

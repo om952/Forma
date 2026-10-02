@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
+import LoadError from "../../../components/LoadError";
 import { apiFetch, apiJson, errorMessage } from "../../../lib/api";
 import { useAuthToken } from "../../../lib/auth";
+import { toast } from "../../../lib/toast";
 
 type ResponseItem = {
   id: string;
@@ -34,7 +36,8 @@ export default function ResponsesPage() {
   const [responses, setResponses] = useState<ResponseItem[]>([]);
   const [form, setForm] = useState<FormSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
@@ -54,6 +57,7 @@ export default function ResponsesPage() {
 
       try {
         setLoading(true);
+        setLoadError(null);
         const authHeader = { Authorization: `Bearer ${token}` };
         const [responsesRes, formRes] = await Promise.all([
           apiFetch(`/api/responses/${formId}?limit=${PAGE_SIZE}`, { headers: authHeader }),
@@ -76,10 +80,9 @@ export default function ResponsesPage() {
           setForm((await formRes.json()) as FormSummary);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        setStatus(message);
+        if (!cancelled) setLoadError(errorMessage(error));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
@@ -87,7 +90,7 @@ export default function ResponsesPage() {
     return () => {
       cancelled = true;
     };
-  }, [formId, token]);
+  }, [formId, token, reloadKey]);
 
   const loadMore = async () => {
     if (!token || !nextCursor) return;
@@ -102,7 +105,7 @@ export default function ResponsesPage() {
       setNextCursor(page.nextCursor);
       setTotal(page.total);
     } catch (error) {
-      setStatus(errorMessage(error));
+      toast.error(errorMessage(error));
     } finally {
       setLoadingMore(false);
     }
@@ -115,7 +118,6 @@ export default function ResponsesPage() {
     if (!formId || !token) return;
 
     setIsExporting(true);
-    setStatus(null);
     try {
       const response = await apiFetch(`/api/responses/${formId}/export`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -136,7 +138,7 @@ export default function ResponsesPage() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unknown error");
+      toast.error(errorMessage(error));
     } finally {
       setIsExporting(false);
     }
@@ -170,8 +172,6 @@ export default function ResponsesPage() {
           </button>
         </header>
 
-        {status ? <div className="status-error mb-6">{status}</div> : null}
-
         {!token ? (
           <div className="card-elevated p-10 text-center">
             <p className="text-slate-600">Please sign in to view responses.</p>
@@ -183,6 +183,8 @@ export default function ResponsesPage() {
           <div className="card-elevated p-10 text-center">
             <p className="text-slate-500">Loading responses...</p>
           </div>
+        ) : loadError ? (
+          <LoadError message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
         ) : responses.length === 0 ? (
           <div className="card-elevated p-10 text-center">
             <p className="text-slate-600">No submissions yet.</p>
