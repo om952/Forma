@@ -222,7 +222,21 @@ export default function TeamPage() {
               </h2>
 
               {!members ? (
-                <p className="mt-4 text-sm text-slate-500">Loading members…</p>
+                error ? (
+                  // The first load failed (the reason is shown above the page).
+                  <button
+                    type="button"
+                    className="btn-secondary mt-4"
+                    onClick={() => {
+                      setError(null);
+                      refresh();
+                    }}
+                  >
+                    Try again
+                  </button>
+                ) : (
+                  <p className="mt-4 text-sm text-slate-500">Loading members…</p>
+                )
               ) : (
                 <ul className="mt-4 divide-y divide-slate-100">
                   {members.map((member) => (

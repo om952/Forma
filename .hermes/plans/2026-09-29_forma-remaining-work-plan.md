@@ -160,24 +160,49 @@ scenarios; OpenAPI 48 operations; migration matches schema.
 
 ---
 
-## Phase 6: Frontend Polish & Launch Readiness
+## Phase 6: Frontend Polish & Launch Readiness — IN PROGRESS
 
 **Goal:** Close the remaining frontend gaps and do a final pass before a real
 deploy.
 
-- [ ] Error boundaries and consistent loading/error states (currently none;
-      failed requests likely fail silently or throw to the console).
-- [ ] Toast/notification system for actions (save, invite sent, webhook
-      test result, etc.) — currently none.
+Checked on 2026-10-02: the plan's "currently none" was out of date. Every page
+already had loading text and an inline message; the real gaps were below.
+
+- [x] Route-level `error.tsx` (inside the layout, reports to Sentry, retry)
+      and `not-found.tsx`; `global-error.tsx` moved to `unstable_retry`
+      (Next 16.2).
+- [x] Toasts (`lib/toast.ts`, `<Toaster>` in the root layout, polite/
+      assertive live regions) for row and background actions whose result
+      was shown far from the button or not at all: dashboard enable/disable/
+      delete, webhook add/test/enable/delete, dead-letter retry, copy
+      failures, subscription cancelled, "load more" failures. Messages tied
+      to a form being filled in stay next to it (and keep their test ids).
+- [x] A failed first load no longer falls through to the empty state
+      ("No forms yet", "No webhooks", Free plan): `LoadError` with Try again
+      on dashboard, webhooks, responses, share, analytics, billing; team's
+      member list no longer says "Loading…" forever.
+- [x] Unreachable API reads "Couldn't reach Forma…" instead of "Failed to
+      fetch"; all pages use the shared `errorMessage`.
+- [x] Builder status green for a save, red for problems (was grey for both);
+      webhooks form error red.
+- [x] Billing: a failed status load offered a Premium org "Subscribe";
+      double-click could start two checkouts; `payment.failed` had no
+      feedback; the test-card note showed on live keys (status now returns
+      `billingMode`); plan copy claimed Free analytics and Premium-only
+      webhooks, neither true.
+- [x] Webhook delete now confirms, like form delete.
 - [ ] The builder's drag-and-drop is hand-rolled HTML5 drag events; it
       works, so this is optional polish (a library like `@dnd-kit` mainly
       buys touch-device support and easier reordering), not a blocker.
 - [ ] Run `/security-review` on the full diff since Phase 0 as a final gate.
 - [ ] A real deploy dry run on the target platform using Phase 1's
       Dockerfiles/compose, end to end, before calling it launched.
+- [ ] Before real customers (not in the original plan): one live-mode
+      Razorpay subscribe/cancel with webhooks reaching the public URL;
+      scheduled off-host Postgres backups with one tested restore; Resend
+      sending domain, S3/R2, Sentry DSNs set on the host.
 
 **Deliverable:** Production-ready application, deployed once as a dry run.
-**Effort:** ~4–5 days.
 
 ---
 

@@ -3,9 +3,23 @@ const DEFAULT_API_BASE = "http://localhost:5001";
 export const getApiBaseUrl = () =>
   process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE;
 
-export const apiFetch = (path: string, init?: RequestInit) => {
+export const NETWORK_ERROR_MESSAGE =
+  "Couldn't reach Forma. Check your connection and try again.";
+
+/**
+ * `fetch` to the API. A request that never got a response (offline, server
+ * down, CORS) rejects with an `ApiError` of status 0 carrying a readable
+ * message, rather than the browser's "Failed to fetch".
+ */
+export const apiFetch = async (path: string, init?: RequestInit) => {
   const base = getApiBaseUrl();
-  return fetch(`${base}${path}`, init);
+  try {
+    return await fetch(`${base}${path}`, init);
+  } catch (error) {
+    // An abort is the caller's own doing, not a connection problem.
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ApiError(0, NETWORK_ERROR_MESSAGE, "network_error");
+  }
 };
 
 /** A failed API call, carrying the server's message, status and machine-readable code. */

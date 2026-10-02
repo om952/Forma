@@ -7,8 +7,10 @@ import QRCode from "qrcode";
 
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
-import { apiFetch } from "../../../lib/api";
+import LoadError from "../../../components/LoadError";
+import { apiFetch, errorMessage } from "../../../lib/api";
 import { useAuthToken } from "../../../lib/auth";
+import { toast } from "../../../lib/toast";
 import { useBrowserValue } from "../../../lib/useBrowserValue";
 
 type FormSummary = {
@@ -23,6 +25,8 @@ export default function SharePage() {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState<"link" | "embed" | null>(null);
   const token = useAuthToken();
   // The origin only exists in the browser; empty until hydration completes.
@@ -30,6 +34,8 @@ export default function SharePage() {
   const publicUrl = origin && formId ? `${origin}/form/${formId}` : "";
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchForm = async () => {
       if (!formId || !token) {
         setLoading(false);
@@ -37,6 +43,8 @@ export default function SharePage() {
       }
 
       try {
+        setLoading(true);
+        setLoadError(null);
         const response = await apiFetch(`/api/forms/${formId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -44,16 +52,20 @@ export default function SharePage() {
           const body = await response.json().catch(() => ({}));
           throw new Error(body.message || "Failed to load form");
         }
-        setForm((await response.json()) as FormSummary);
+        const data = (await response.json()) as FormSummary;
+        if (!cancelled) setForm(data);
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Error");
+        if (!cancelled) setLoadError(errorMessage(error));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchForm();
-  }, [formId, token]);
+    return () => {
+      cancelled = true;
+    };
+  }, [formId, token, reloadKey]);
 
   useEffect(() => {
     if (!publicUrl) return;
@@ -77,7 +89,7 @@ export default function SharePage() {
       setCopied(which);
       setTimeout(() => setCopied(null), 2000);
     } catch {
-      setStatus("Could not copy — copy it manually instead.");
+      toast.error("Couldn't copy. Select the text and copy it manually.");
     }
   };
 
@@ -97,6 +109,18 @@ export default function SharePage() {
           <Link href="/auth" className="btn-primary mt-4 inline-block">
             Go to Auth
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="page-bg">
+        <AppHeader />
+        <FormSubNav formId={formId} active="share" />
+        <div className="mx-auto w-full max-w-3xl px-6 py-10">
+          <LoadError message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
         </div>
       </div>
     );

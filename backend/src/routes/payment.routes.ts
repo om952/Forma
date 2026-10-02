@@ -13,7 +13,9 @@ export const paymentRoutes: RouteSpec[] = [
     path: "/status",
     summary: "The organization's plan and subscription state",
     access: "user",
-    responses: { 200: "`{ tier, status, currentPeriodEnd, cancelAtPeriodEnd }`." },
+    responses: {
+      200: "`{ tier, status, currentPeriodEnd, cancelAtPeriodEnd, billingMode }`; `billingMode` is `live`, `test` (Razorpay test keys) or `disabled`.",
+    },
     handler: getSubscriptionStatus,
   }),
   route({
