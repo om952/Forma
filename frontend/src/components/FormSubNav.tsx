@@ -28,21 +28,22 @@ export default function FormSubNav({
 }) {
   return (
     <div className="border-b border-slate-200 bg-white">
-      <div className="mx-auto max-w-6xl px-6">
-        <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="flex items-center justify-between gap-6">
           {formName ? (
-            <p className="truncate py-3 text-sm font-medium text-slate-500">
+            <p className="hidden min-w-0 truncate py-3 text-sm font-medium text-slate-500 md:block">
               {formName}
             </p>
           ) : (
             <span />
           )}
-          <nav className="flex gap-6">
+          {/* Scrolls sideways on a phone rather than widening the page. */}
+          <nav className="-mb-px flex gap-6 overflow-x-auto">
             {TABS.map((tab) => (
               <Link
                 key={tab.key}
                 href={tab.href(formId)}
-                className={tab.key === active ? "subnav-tab-active" : "subnav-tab"}
+                className={`shrink-0 ${tab.key === active ? "subnav-tab-active" : "subnav-tab"}`}
               >
                 {tab.label}
               </Link>

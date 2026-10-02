@@ -26,6 +26,21 @@ import {
   type RuleAction,
 } from "../../stores/formBuilderStore";
 
+const OPERATOR_TEXT: Record<RuleOperator, string> = {
+  equals: "is",
+  not_equals: "is not",
+  contains: "contains",
+  not_contains: "doesn't contain",
+};
+
+/** A rule as the respondent would experience it: "Shown when “Recommend?” is No". */
+const describeRule = (rule: FormRule, schema: FormField[]) => {
+  const source = schema.find((field) => field.id === rule.ifFieldId)?.label ?? "another field";
+  return `${rule.action === "show" ? "Shown" : "Hidden"} when “${source}” ${OPERATOR_TEXT[rule.operator]} ${
+    rule.value || "empty"
+  }`;
+};
+
 export default function FormBuilderPage() {
   const {
     title,
@@ -58,6 +73,8 @@ export default function FormBuilderPage() {
   const [chosenFormId, setFormId] = useState<string | null | undefined>(undefined);
   const formId = chosenFormId === undefined ? formIdInUrl : chosenFormId;
   const [isLoading, setIsLoading] = useState(false);
+  // Whether the saved form accepts responses; null for one not saved yet.
+  const [savedActive, setSavedActive] = useState<boolean | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [fieldLabel, setFieldLabel] = useState("");
   const [fieldRequired, setFieldRequired] = useState(false);
@@ -95,7 +112,9 @@ export default function FormBuilderPage() {
           name: string;
           schema: FormField[];
           thankYouMessage?: string | null;
+          isActive?: boolean;
         };
+        setSavedActive(data.isActive ?? true);
         loadForm({
           title: data.name,
           thankYouMessage: data.thankYouMessage ?? "",
@@ -363,11 +382,11 @@ export default function FormBuilderPage() {
                 onClick={() => {
                   clear();
                   setFormId(null);
+                  setSavedActive(null);
                 }}
               >
                 {formId ? "New Form" : "Clear All"}
               </button>
-              {token ? <p className="text-xs text-slate-500">Authenticated</p> : null}
               {status ? (
                 <div
                   className={status.kind === "success" ? "status-success" : "status-error"}
@@ -391,9 +410,21 @@ export default function FormBuilderPage() {
                     : `${schema.length} field${schema.length > 1 ? "s" : ""} added.`}
                 </p>
               </div>
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                Draft
-              </span>
+              {formId ? (
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    savedActive === false
+                      ? "bg-slate-100 text-slate-600"
+                      : "bg-emerald-100 text-emerald-700"
+                  }`}
+                >
+                  {savedActive === false ? "Disabled" : "Live"}
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                  Not saved yet
+                </span>
+              )}
             </div>
 
             <div className="mt-8 space-y-4">
@@ -419,8 +450,18 @@ export default function FormBuilderPage() {
                         {field.label}
                         {field.required ? " *" : ""}
                       </label>
-                      <span className="text-xs text-slate-400">⋮⋮</span>
+                      <span className="text-xs text-slate-400" aria-hidden="true">⋮⋮</span>
                     </div>
+                    {rules
+                      .filter((rule) => rule.targetFieldId === field.id)
+                      .map((rule) => (
+                        <p
+                          key={rule.id}
+                          className="mb-2 inline-flex rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700"
+                        >
+                          {describeRule(rule, schema)}
+                        </p>
+                      ))}
                     {field.type === "text" ? (
                       <input className="input" placeholder="Type here..." readOnly />
                     ) : null}
@@ -453,6 +494,25 @@ export default function FormBuilderPage() {
                       <input className="input" type="file" disabled />
                     ) : null}
                     <div className="mt-3 flex gap-2">
+                      {/* Dragging needs a mouse; these reorder by touch or keyboard. */}
+                      <button
+                        type="button"
+                        onClick={() => reorderFields(index, index - 1)}
+                        disabled={index === 0}
+                        aria-label={`Move "${field.label}" up`}
+                        className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-40"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => reorderFields(index, index + 1)}
+                        disabled={index === schema.length - 1}
+                        aria-label={`Move "${field.label}" down`}
+                        className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-40"
+                      >
+                        ↓
+                      </button>
                       <button
                         data-testid="builder-field-edit"
                         onClick={() => handleEditField(field)}

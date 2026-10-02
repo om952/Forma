@@ -215,7 +215,7 @@ export default function TeamPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid items-start gap-6 lg:grid-cols-3">
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
             <section className="card-elevated lg:col-span-2">
               <h2 className="text-lg font-semibold text-slate-900">
                 Members{members ? ` (${members.length})` : ""}
@@ -365,7 +365,7 @@ export default function TeamPage() {
                       {invites.map((invite) => (
                         <li key={invite.id} className="rounded-xl border border-slate-200 p-3">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="truncate text-sm font-semibold text-slate-900">
+                            <p className="min-w-0 truncate text-sm font-semibold text-slate-900">
                               {invite.email}
                             </p>
                             <RoleBadge role={invite.role} />

@@ -19,6 +19,12 @@ public class DashboardPage extends BasePage {
     return this;
   }
 
+  /** After signing in: the dashboard has loaded, with forms or without. */
+  public void waitUntilShown() {
+    waitForPath("/dashboard");
+    wait.until(d -> present(testId("form-card")) || shows("No forms yet"));
+  }
+
   public List<String> formTitles() {
     return texts("[data-testid='form-card-title']");
   }

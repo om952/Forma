@@ -171,7 +171,7 @@ export default function SharePage() {
           </a>
         </div>
 
-        <div className="mt-6 grid gap-6 md:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="card-elevated text-center">
             <h2 className="text-lg font-semibold text-slate-900">QR code</h2>
             <p className="mt-1 text-sm text-slate-600">
@@ -207,7 +207,7 @@ export default function SharePage() {
             <p className="mt-1 text-sm text-slate-600">
               Paste this into any HTML page.
             </p>
-            <pre className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">
+            <pre className="mt-4 whitespace-pre-wrap break-all rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">
               <code>{embedSnippet}</code>
             </pre>
             <button

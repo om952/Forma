@@ -74,7 +74,7 @@ export default function ActivityLog({ token, refreshKey }: { token: string; refr
           {entries.map((entry) => (
             <li key={entry.id} className="flex flex-wrap items-baseline justify-between gap-2 py-3" data-testid="activity-entry">
               <div className="min-w-0">
-                <p className="text-sm text-slate-900">{describeAuditEntry(entry)}</p>
+                <p className="break-words text-sm text-slate-900 [overflow-wrap:anywhere]">{describeAuditEntry(entry)}</p>
                 <p className="text-xs text-slate-500">{auditActor(entry)}</p>
               </div>
               <time className="text-xs text-slate-400" dateTime={entry.createdAt}>

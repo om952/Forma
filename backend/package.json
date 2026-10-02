@@ -10,6 +10,7 @@
     "dev": "prisma generate && tsx src/server.ts",
     "dev:worker": "tsx src/worker.ts",
     "migrate:deploy": "prisma migrate deploy",
+    "seed:demo": "tsx src/scripts/seedDemo.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "test:integration": "node --import tsx --test --test-concurrency=1 --test-force-exit \"src/**/*.integration.ts\""

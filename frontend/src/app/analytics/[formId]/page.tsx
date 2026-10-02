@@ -20,6 +20,7 @@ import LoadError from "../../../components/LoadError";
 import { ApiError, apiJson, errorMessage } from "../../../lib/api";
 import { useAuthToken } from "../../../lib/auth";
 import { useBrowserValue } from "../../../lib/useBrowserValue";
+import { useFormName } from "../../../lib/useFormName";
 
 type Analytics = {
   formId: string;
@@ -49,6 +50,7 @@ export default function AnalyticsPage() {
   const params = useParams<{ formId?: string }>();
   const formId = typeof params.formId === "string" ? params.formId : "";
   const token = useAuthToken();
+  const formName = useFormName(formId, token);
   // Counted in the viewer's own calendar. Unknown until the browser renders.
   const timeZone = useBrowserValue<string | null>(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -101,7 +103,7 @@ export default function AnalyticsPage() {
   return (
     <div className="page-bg">
       <AppHeader />
-      <FormSubNav formId={formId} active="analytics" />
+      <FormSubNav formId={formId} active="analytics" formName={formName} />
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">
         <header>
           <p className="eyebrow">Analytics</p>

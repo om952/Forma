@@ -1,0 +1,81 @@
+# Render Blueprint for the free demo deployment: the API (with its queue
+# workers in-process) plus a Key Value (Redis) instance. Postgres is Neon's
+# free tier, not Render's, whose free database is deleted after 30 days.
+# The web app is deployed separately on Vercel. Walkthrough: deploy/FREE-DEMO.md.
+#
+# Free-tier facts this file is shaped around:
+#   - the API sleeps after 15 idle minutes; an uptime ping on /health/live
+#     keeps it awake (that endpoint touches neither Postgres nor Redis, so it
+#     doesn't keep Neon's compute running too);
+#   - there are no free background workers, so the API runs them itself;
+#   - the disk is not persistent: uploaded files go when the service restarts
+#     unless the S3 variables point at Cloudflare R2.
+
+services:
+  - type: web
+    name: forma-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    # Migrations run on every start rather than as a pre-deploy step, which
+    # paid plans only get. Harmless with one instance: `migrate deploy` only
+    # applies what's missing.
+    dockerCommand: sh -c "npx prisma migrate deploy && exec node dist/server.js"
+    healthCheckPath: /health/live
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Neon's pooled connection string (Dashboard → Connect), with
+      # ?sslmode=require. Not stored here: it contains the password.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: forma-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      # The Vercel URL, e.g. https://forma-demo.vercel.app — allowed by CORS
+      # and used in invite and password-reset links.
+      - key: FRONTEND_URL
+        sync: false
+      # This service's own URL, e.g. https://forma-api.onrender.com.
+      - key: PUBLIC_API_URL
+        sync: false
+      # Render puts exactly one proxy in front of the app.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: RUN_WORKERS_IN_API
+        value: "true"
+      # A free instance has a tenth of a CPU: cost 12 takes seconds per sign-in.
+      # 10 is still the commonly recommended minimum.
+      - key: BCRYPT_SALT_ROUNDS
+        value: "10"
+      - key: WEBHOOK_WORKER_CONCURRENCY
+        value: "5"
+      - key: LOG_LEVEL
+        value: info
+      # Optional. Leave unset to keep them off.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+
+  - type: keyvalue
+    name: forma-redis
+    plan: free
+    region: singapore
+    # BullMQ requires that Redis never evicts its keys.
+    maxmemoryPolicy: noeviction
+    # Only reachable from services in this account, over Render's private network.
+    ipAllowList: []

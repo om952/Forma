@@ -56,6 +56,49 @@ describe("sign-up and sign-in page", () => {
     expect(push).toHaveBeenCalledWith("/builder");
   });
 
+  it("signs a returning user in to their dashboard", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      reply(200, { token: "tok-2", user: { id: "u1", email: "ada@x.test", role: "OWNER", orgId: "o1" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<AuthPage />);
+    await user.click(screen.getByTestId("auth-tab-login"));
+    await user.type(screen.getByTestId("auth-email"), "ada@x.test");
+    await user.type(screen.getByTestId("auth-password"), "pass-word-1");
+    await user.click(screen.getByTestId("auth-submit"));
+
+    expect((fetchMock.mock.calls[0] as [string])[0]).toMatch(/\/api\/auth\/login$/);
+    expect(push).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("offers the demo workspace only when one is configured, and signs in to it in one click", async () => {
+    expect(screen.queryByTestId("demo-login")).toBeNull();
+    render(<AuthPage />);
+    expect(screen.queryByTestId("demo-login")).toBeNull();
+    cleanup();
+
+    vi.stubEnv("NEXT_PUBLIC_DEMO_EMAIL", "owner@forma.demo");
+    vi.stubEnv("NEXT_PUBLIC_DEMO_PASSWORD", "demo-pass-1");
+    vi.resetModules();
+    const { default: DemoAuthPage } = await import("./page");
+    const fetchMock = vi.fn().mockResolvedValue(
+      reply(200, { token: "tok-3", user: { id: "u9", email: "owner@forma.demo", role: "OWNER", orgId: "o9" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DemoAuthPage />);
+    await user.click(screen.getByRole("button", { name: "Explore the demo" }));
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/api\/auth\/login$/);
+    expect(JSON.parse(String(init.body))).toEqual({ email: "owner@forma.demo", password: "demo-pass-1" });
+    expect(push).toHaveBeenCalledWith("/dashboard");
+    vi.unstubAllEnvs();
+  });
+
   it("shows the server's reason and stays put when sign-in fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply(401, { message: "Invalid credentials" })));
     const user = userEvent.setup();

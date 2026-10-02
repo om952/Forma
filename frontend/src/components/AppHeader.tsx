@@ -19,6 +19,12 @@ import {
  * into a route group would mean rewriting every relative import for a purely
  * cosmetic change.
  */
+const NAV = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/team", label: "Team" },
+  { href: "/billing", label: "Billing" },
+];
+
 export default function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
@@ -73,7 +79,7 @@ export default function AppHeader() {
   return (
     <>
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
@@ -85,24 +91,15 @@ export default function AppHeader() {
             </Link>
 
             <nav className="hidden items-center gap-1 sm:flex">
-              <Link
-                href="/dashboard"
-                className={isActive("/dashboard") ? "nav-link-active" : "nav-link"}
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/team"
-                className={isActive("/team") ? "nav-link-active" : "nav-link"}
-              >
-                Team
-              </Link>
-              <Link
-                href="/billing"
-                className={isActive("/billing") ? "nav-link-active" : "nav-link"}
-              >
-                Billing
-              </Link>
+              {NAV.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={isActive(item.href) ? "nav-link-active" : "nav-link"}
+                >
+                  {item.label}
+                </Link>
+              ))}
             </nav>
           </div>
 
@@ -122,6 +119,22 @@ export default function AppHeader() {
           </div>
         </div>
       </header>
+
+      {/* Phones: the links get their own row instead of disappearing. */}
+      <nav
+        className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-4 py-2 sm:hidden"
+        aria-label="Main"
+      >
+        {[...NAV, { href: "/account", label: "Account" }].map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`shrink-0 ${isActive(item.href) ? "nav-link-active" : "nav-link"}`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
 
       {user?.emailVerified === false ? (
         <div className="border-b border-amber-200 bg-amber-50" data-testid="verify-banner">

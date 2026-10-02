@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 import AppHeader from "../../../components/AppHeader";
 import FormSubNav from "../../../components/FormSubNav";
 import LoadError from "../../../components/LoadError";
-import { apiFetch, apiJson, errorMessage, getApiBaseUrl } from "../../../lib/api";
+import { apiFetch, apiJson, errorMessage } from "../../../lib/api";
 import { getAuthToken } from "../../../lib/auth";
+import { formatDate, formatDateTime } from "../../../lib/format";
 import { toast } from "../../../lib/toast";
+import { useFormName } from "../../../lib/useFormName";
 
 const PRESET_WEBHOOKS = [
   {
@@ -60,7 +62,7 @@ export default function WebhooksPage() {
   const [url, setUrl] = useState("");
   const [selectedPreset, setSelectedPreset] = useState("");
   const token = typeof window !== "undefined" ? getAuthToken() : null;
-  const apiBase = getApiBaseUrl();
+  const formName = useFormName(formId, token);
 
   useEffect(() => {
     // Ignores a response that arrives after the effect re-ran, so it cannot
@@ -238,7 +240,7 @@ export default function WebhooksPage() {
     return (
       <div className="page-bg">
         <AppHeader />
-        <FormSubNav formId={formId} active="webhooks" />
+        <FormSubNav formId={formId} active="webhooks" formName={formName} />
         <div className="mx-auto w-full max-w-3xl px-6 py-10">
           <LoadError message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
         </div>
@@ -249,7 +251,7 @@ export default function WebhooksPage() {
   return (
     <div className="page-bg">
       <AppHeader />
-      <FormSubNav formId={formId} active="webhooks" />
+      <FormSubNav formId={formId} active="webhooks" formName={formName} />
       <div className="px-6 py-10">
       <div className="mx-auto w-full max-w-3xl">
         <div className="mb-6 flex items-center justify-between">
@@ -257,7 +259,6 @@ export default function WebhooksPage() {
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Webhooks</h1>
             <p className="text-sm text-slate-500">Route submissions to Slack, Zapier, or custom URLs.</p>
           </div>
-          <div className="text-xs text-slate-400">API: {apiBase}</div>
         </div>
 
         <div className="card-elevated">
@@ -326,7 +327,7 @@ export default function WebhooksPage() {
                         <span className="text-slate-400">Inactive</span>
                       )}
                       {" · "}
-                      Added {new Date(webhook.createdAt).toLocaleDateString()}
+                      Added {formatDate(webhook.createdAt)}
                     </p>
                   </div>
                   <div className="ml-4 flex gap-2">
@@ -379,7 +380,7 @@ export default function WebhooksPage() {
                         {deadLetter.attemptsMade} attempt
                         {deadLetter.attemptsMade !== 1 ? "s" : ""}
                         {" · "}
-                        Failed {new Date(deadLetter.failedAt).toLocaleString()}
+                        Failed {formatDateTime(deadLetter.failedAt)}
                       </p>
                     </div>
                     <button

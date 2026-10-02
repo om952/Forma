@@ -9,6 +9,8 @@ import FormSubNav from "../../../components/FormSubNav";
 import LoadError from "../../../components/LoadError";
 import { apiFetch, apiJson, errorMessage } from "../../../lib/api";
 import { useAuthToken } from "../../../lib/auth";
+import { formatDateTime } from "../../../lib/format";
+import { orderedAnswers, type SchemaField } from "../../../lib/responses";
 import { toast } from "../../../lib/toast";
 
 type ResponseItem = {
@@ -27,7 +29,7 @@ const PAGE_SIZE = 25;
 
 type FormSummary = {
   name: string;
-  schema: Array<{ id: string; label: string }>;
+  schema: SchemaField[];
 };
 
 export default function ResponsesPage() {
@@ -111,9 +113,6 @@ export default function ResponsesPage() {
     }
   };
 
-  const labelForField = (fieldId: string) =>
-    form?.schema?.find((field) => field.id === fieldId)?.label ?? fieldId;
-
   const handleExport = async () => {
     if (!formId || !token) return;
 
@@ -195,22 +194,38 @@ export default function ResponsesPage() {
               <div key={resp.id} className="card-elevated" data-testid="response-card">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-400">
-                    {new Date(resp.submittedAt).toLocaleString()}
+                    {formatDateTime(resp.submittedAt)}
                   </span>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                     {resp.id.slice(0, 8)}
                   </span>
                 </div>
-                <div className="mt-4 space-y-2">
-                  {Object.entries(resp.payload).map(([key, value]) => (
-                    <div key={key} className="flex gap-2 text-sm">
-                      <span className="font-medium text-slate-700">
-                        {labelForField(key)}:
-                      </span>
-                      <span className="break-all text-slate-600">{String(value)}</span>
+                <dl className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                  {orderedAnswers(resp.payload, form?.schema).map((answer) => (
+                    <div
+                      key={answer.id}
+                      className={`min-w-0 ${answer.type === "textarea" ? "sm:col-span-2" : ""}`}
+                    >
+                      <dt className="text-xs font-medium text-slate-500">{answer.label}</dt>
+                      <dd className="mt-0.5 break-words text-sm text-slate-800">
+                        {answer.text === "" ? (
+                          <span className="text-slate-400">No answer</span>
+                        ) : answer.type === "file" && answer.text.startsWith("http") ? (
+                          <a
+                            href={answer.text}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="break-all text-indigo-600 underline"
+                          >
+                            {answer.text}
+                          </a>
+                        ) : (
+                          answer.text
+                        )}
+                      </dd>
                     </div>
                   ))}
-                </div>
+                </dl>
               </div>
             ))}
             {nextCursor ? (

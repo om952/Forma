@@ -13,7 +13,7 @@ Feature: Signing up and signing in
   Scenario: Signing in with the right password
     Given an organization owner who has signed out
     When they sign in with their email and password
-    Then they land in the form builder
+    Then they land on their dashboard
 
   Scenario: A wrong password is refused
     Given an organization owner who has signed out

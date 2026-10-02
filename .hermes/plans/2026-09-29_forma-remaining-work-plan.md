@@ -160,7 +160,7 @@ scenarios; OpenAPI 48 operations; migration matches schema.
 
 ---
 
-## Phase 6: Frontend Polish & Launch Readiness — IN PROGRESS
+## Phase 6: Frontend Polish & Launch Readiness — DONE 2026-10-02 (security review pending)
 
 **Goal:** Close the remaining frontend gaps and do a final pass before a real
 deploy.
@@ -191,20 +191,50 @@ already had loading text and an inline message; the real gaps were below.
       `billingMode`); plan copy claimed Free analytics and Premium-only
       webhooks, neither true.
 - [x] Webhook delete now confirms, like form delete.
-- [ ] The builder's drag-and-drop is hand-rolled HTML5 drag events; it
-      works, so this is optional polish (a library like `@dnd-kit` mainly
-      buys touch-device support and easier reordering), not a blocker.
+- [x] Builder reordering without a mouse: up/down buttons beside drag and
+      drop (touch and keyboard). A drag library stays optional.
 - [ ] Run `/security-review` on the full diff since Phase 0 as a final gate.
-- [ ] A real deploy dry run on the target platform using Phase 1's
-      Dockerfiles/compose, end to end, before calling it launched.
-- [ ] Before real customers (not in the original plan): one live-mode
-      Razorpay subscribe/cancel with webhooks reaching the public URL;
-      scheduled off-host Postgres backups with one tested restore; Resend
-      sending domain, S3/R2, Sentry DSNs set on the host.
+- [ ] Deploy (see Phase 7).
 
 **Deliverable:** Production-ready application, deployed once as a dry run.
 
 ---
+
+## Phase 7: Free Demo Deployment — CONFIG DONE 2026-10-02
+
+**Goal changed (2026-10-02):** the deployment is a free public demo for
+placement interviews, not a product with customers. So: free tiers only,
+Vercel (web) + Render (API, Redis) + Neon (Postgres); live Razorpay, off-host
+backups, a paid email domain and a hard email gate are out of scope.
+
+- [x] `render.yaml`: API from the backend Dockerfile with workers in-process,
+      migrations on start (no paid pre-deploy step), `/health/live` health
+      check (touches no database, so Neon can scale to zero), Key Value with
+      `noeviction`, `TRUST_PROXY=1`, bcrypt cost 10 for a 0.1-CPU instance.
+      Verified locally: the image starts with that exact command, migrates
+      an empty database, serves `/health/ready`, and answers CORS for the
+      Vercel origin.
+- [x] `npm run seed:demo`: Northwind Labs (Premium), owner/admin/member, four
+      forms (conditional rules, one closed), ~460 responses and ~900 visits
+      over 90 days shaped for the funnel, drop-off and heatmap, webhooks with
+      failed deliveries, a pending invite, an activity log. Idempotent (resets
+      only that org); deterministic.
+- [x] One-click "Explore the demo" on home and sign-in when
+      `NEXT_PUBLIC_DEMO_EMAIL`/`_PASSWORD` are set at build time.
+- [x] UI pass from screenshots of every page at 1440 px and 390 px:
+      phones had no navigation at all and seven pages scrolled sideways;
+      responses showed answers in JSONB key order, not the form's; numeric
+      dates were ambiguous (02/10); dashboard cards truncated titles behind
+      the badge; debug text ("Authenticated", "API: http://…") on two pages;
+      a "Draft" badge on live forms; the home page offered an analytics
+      lookup that needed sign-in; public-form labels weren't tied to their
+      inputs; Premium without a Razorpay subscription offered a Cancel that
+      always failed. All fixed; signing in now lands on the dashboard.
+- [x] `deploy/FREE-DEMO.md`: step-by-step setup, reset, keep-awake, and a
+      five-minute interview walkthrough.
+- [ ] Create the Neon, Render and Vercel accounts and deploy (needs the owner's
+      accounts; about 45 minutes following the guide).
+- [ ] Security review, then a walkthrough on the live URL.
 
 ## Summary Timeline
 

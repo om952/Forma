@@ -1,57 +1,38 @@
-"use client";
-
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+
+import { demoAccount } from "../lib/demo";
 
 export default function Home() {
-  const router = useRouter();
-  const [formId, setFormId] = useState("");
-
-  const handleAnalytics = (event: React.FormEvent) => {
-    event.preventDefault();
-    const trimmed = formId.trim();
-    if (trimmed) {
-      router.push(`/analytics/${trimmed}`);
-    }
-  };
-
   const features = [
     {
       title: "Drag-and-Drop Builder",
       description: "Text, select, file fields, and conditional rules with no code.",
       icon: "🧱",
-      href: "/builder",
     },
     {
       title: "Conditional Logic",
       description: "Show or hide fields based on answers for dynamic forms.",
       icon: "⚡",
-      href: "/builder",
     },
     {
       title: "File Uploads",
-      description: "Collect files securely with local disk storage and validation.",
+      description: "Accept PDFs and images, checked by their actual contents, not just the file name.",
       icon: "📎",
-      href: "/builder",
     },
     {
       title: "Webhook Integrations",
-      description: "Send submissions to Slack, Zapier, or any custom endpoint.",
+      description: "Send submissions to Slack, Zapier or any URL, with retries and a queue of failed deliveries to replay.",
       icon: "🔌",
-      href: "/dashboard",
     },
     {
       title: "Rich Analytics",
-      description: "Track drop-off rates, field heatmaps, and response trends.",
+      description: "See where respondents drop off, which questions get skipped, and when responses arrive.",
       icon: "📊",
-      href: "/dashboard",
     },
     {
       title: "Subscription Billing",
-      description: "Razorpay-powered premium plans with test-mode support.",
+      description: "Free and Premium plans through Razorpay, with features unlocked per plan.",
       icon: "💳",
-      href: "/billing",
     },
   ];
 
@@ -100,35 +81,31 @@ export default function Home() {
             <Link href="/auth" className="btn-primary min-w-[160px]">
               Get Started
             </Link>
-            <Link href="/builder" className="btn-secondary min-w-[160px]">
-              Try Builder
+            <Link href="/auth" className="btn-secondary min-w-[160px]">
+              {demoAccount ? "Explore the demo" : "Sign in"}
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Analytics lookup */}
-      <section className="px-6 pb-16">
-        <div className="mx-auto max-w-2xl">
-          <form onSubmit={handleAnalytics} className="card-elevated">
-            <h3 className="text-lg font-semibold text-slate-900">View Analytics</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Paste a public form ID to see its submissions and insights.
-            </p>
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <input
-                className="input"
-                placeholder="Form ID"
-                value={formId}
-                onChange={(event) => setFormId(event.target.value)}
-              />
-              <button type="submit" className="btn-primary shrink-0">
-                Open analytics
-              </button>
+      {demoAccount ? (
+        <section className="px-6 pb-16">
+          <div className="mx-auto max-w-2xl">
+            <div className="card-elevated flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-slate-900">See it with real-looking data</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  A demo workspace with four forms, three months of responses, analytics,
+                  webhooks and a team of three. One click, no sign-up.
+                </p>
+              </div>
+              <Link href="/auth" className="btn-primary shrink-0">
+                Explore the demo
+              </Link>
             </div>
-          </form>
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : null}
 
       {/* How it works */}
       <section className="px-6 pb-16">
@@ -163,11 +140,7 @@ export default function Home() {
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((feature) => (
-              <Link
-                key={feature.title}
-                href={feature.href}
-                className="card-elevated transition hover:-translate-y-1"
-              >
+              <div key={feature.title} className="card-elevated">
                 <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-2xl">
                   {feature.icon}
                 </div>
@@ -175,7 +148,7 @@ export default function Home() {
                 <p className="mt-2 text-sm leading-relaxed text-slate-600">
                   {feature.description}
                 </p>
-              </Link>
+              </div>
             ))}
           </div>
         </div>
@@ -206,9 +179,8 @@ export default function Home() {
             <span className="text-sm font-semibold text-slate-700">Forma</span>
           </div>
           <div className="flex items-center gap-6 text-sm text-slate-500">
-            <Link href="/builder" className="hover:text-slate-900">Builder</Link>
-            <Link href="/billing" className="hover:text-slate-900">Pricing</Link>
             <Link href="/auth" className="hover:text-slate-900">Sign in</Link>
+            <Link href="/auth" className="hover:text-slate-900">Create account</Link>
           </div>
           <p className="text-xs text-slate-400">© {new Date().getFullYear()} Forma</p>
         </div>
