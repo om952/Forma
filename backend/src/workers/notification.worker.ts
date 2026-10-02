@@ -90,6 +90,7 @@ export const createNotificationWorker = () => {
     },
     {
       connection: redisConnection,
+      concurrency: env.NOTIFICATION_WORKER_CONCURRENCY,
       limiter: {
         max: 20,
         duration: 1000,

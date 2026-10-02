@@ -68,6 +68,19 @@ public class TeamPage extends BasePage {
     wait.until(d -> members().stream().noneMatch(row -> row.contains(nameOrEmail)));
   }
 
+  /** The activity entries, newest first; empty when the panel isn't shown. */
+  public List<String> activity() {
+    return texts("[data-testid='activity-entry']");
+  }
+
+  public boolean showsActivity() {
+    return present(testId("activity-log"));
+  }
+
+  public void waitForActivityCount(int count) {
+    wait.until(d -> activity().size() >= count);
+  }
+
   public String notice() {
     return text(testId("team-notice"));
   }

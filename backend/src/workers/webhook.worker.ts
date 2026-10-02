@@ -1,5 +1,6 @@
 import { Worker, Job } from "bullmq";
 
+import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import { logger } from "../observability/logger";
 import {
@@ -77,6 +78,8 @@ export const createWebhookWorker = () => {
     },
     {
       connection: redisConnection,
+      // Several deliveries in flight, so one slow endpoint can't stall the rest.
+      concurrency: env.WEBHOOK_WORKER_CONCURRENCY,
       limiter: {
         max: 50,
         duration: 1000,

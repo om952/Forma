@@ -4,6 +4,7 @@ import Razorpay from "razorpay";
 
 import { billingConfig } from "../config/env";
 import { prisma } from "../db/prisma";
+import { recordAuditLog } from "../services/auditLog";
 import {
   LIVE_SUBSCRIPTION_STATUSES,
   parseBillingEvent,
@@ -133,6 +134,14 @@ export const createSubscription = async (req: Request, res: Response) => {
       },
     });
 
+    await recordAuditLog({
+      orgId: org.id,
+      actor: { id: req.user.id, email: req.user.email },
+      action: "billing.subscription_started",
+      targetId: subscription.id,
+      metadata: { plan: selectedPlan, amount: planConfig.amount, currency: planConfig.currency },
+    });
+
     return res.status(201).json({
       subscriptionId: subscription.id,
       amount: planConfig.amount,
@@ -182,7 +191,7 @@ const recordBillingEvent = async (
   if (seen) return "duplicate";
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const org = event.subscription
         ? await tx.organization.findUnique({
             where: { razorpaySubscriptionId: event.subscription.id },
@@ -218,8 +227,27 @@ const recordBillingEvent = async (
         },
       });
 
-      return outcome;
+      return { outcome, orgId: org?.id, change };
     });
+
+    // A tier flip is the one billing change worth its own audit entry — every
+    // event, tier-moving or not, is already durably recorded in BillingEvent.
+    // No actor: Razorpay's webhook made this happen, not a click in the app.
+    if (result.outcome === "applied" && result.orgId && result.change?.tier) {
+      await recordAuditLog({
+        orgId: result.orgId,
+        actor: null,
+        action: "billing.tier_changed",
+        metadata: {
+          source: "razorpay_webhook",
+          eventType: event.type,
+          tier: result.change.tier,
+          subscriptionStatus: result.change.subscriptionStatus,
+        },
+      });
+    }
+
+    return result.outcome;
   } catch (error) {
     // A concurrent delivery of the same event committed first.
     if (
@@ -354,6 +382,14 @@ export const cancelSubscription = async (req: Request, res: Response) => {
         data: { cancelAtPeriodEnd: true },
       });
 
+      await recordAuditLog({
+        orgId: org.id,
+        actor: { id: req.user.id, email: req.user.email },
+        action: "billing.subscription_cancel_requested",
+        targetId: org.razorpaySubscriptionId,
+        metadata: { currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null },
+      });
+
       return res.json({
         message: "Subscription will cancel at the end of the current period",
         cancelAtPeriodEnd: true,
@@ -374,6 +410,14 @@ export const cancelSubscription = async (req: Request, res: Response) => {
         cancelAtPeriodEnd: false,
         billingEventAt: new Date(),
       },
+    });
+
+    await recordAuditLog({
+      orgId: org.id,
+      actor: { id: req.user.id, email: req.user.email },
+      action: "billing.subscription_cancelled_immediately",
+      targetId: org.razorpaySubscriptionId,
+      metadata: { previousStatus: status },
     });
 
     return res.json({ message: "Subscription cancelled", cancelAtPeriodEnd: false });

@@ -91,7 +91,13 @@ services:
     image: ${FORMA_WEB_IMAGE:-forma-web:local}
     build:
       context: ./frontend
+      args:
+        # Browser error reporting is baked into the bundle at build time.
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_WEB_DSN:-${SENTRY_DSN:-}}
     restart: unless-stopped
+    environment:
+      # Errors in the Next.js server itself, read at run time.
+      SENTRY_DSN: ${SENTRY_WEB_DSN:-${SENTRY_DSN:-}}
     depends_on:
       api:
         condition: service_healthy
